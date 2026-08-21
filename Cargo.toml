@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 wry = "0.41"
 tao = "0.29"
+tiny_http = "0.12.0"
