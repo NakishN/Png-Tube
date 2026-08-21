@@ -1,0 +1,8 @@
+[package]
+name = "pngtuber-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wry = "0.41"
+tao = "0.29"

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оптимизированный PNGTuber</title>
+    <style>
+        :root {
+            --bg-color: #00ff00;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color); /* Зеленый фон для хромакея */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            transition: background-color 0.3s;
+        }
+        
+        #avatar-container {
+            position: relative;
+            transition: transform 0.1s ease-out;
+            will-change: transform;
+        }
+
+        .avatar-img {
+            max-height: 90vh;
+            max-width: 90vw;
+            display: none;
+            object-fit: contain;
+            filter: drop-shadow(0 10px 15px rgba(0,0,0,0.2));
+        }
+
+        .avatar-img.active {
+            display: block;
+        }
+
+        /* Анимация при разговоре */
+        .speaking-animation {
+            animation: bounce 0.25s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-15px); }
+        }
+
+        /* Меню настроек - Glassmorphism */
+        #settings-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(30, 30, 40, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 1000;
+            width: 300px;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        #settings-panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-20px);
+        }
+
+        h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
+        .settings-row {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #ddd;
+            font-weight: 500;
+        }
+
+        input[type="file"] {
+            font-size: 12px;
+            width: calc(100% - 18px);
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #6c5ce7;
+            cursor: pointer;
+        }
+        
+        input[type="color"] {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: none;
+        }
+
+        .btn-primary, .btn-secondary {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s, transform 0.1s;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            color: white;
+            box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5b4bc4, #8e86eb);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        #volume-meter {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        #volume-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00b894, #00cec9, #0984e3);
+            width: 0%;
+            transition: width 0.1s;
+        }
+
+        .hint {
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .tab-buttons {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: none;
+            color: #aaa;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+        }
+        
+        .tab-btn.active {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="settings-panel">
+        <h3>Оптимизированный PNGTuber</h3>
+        
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('images', event)">Аватар</button>
+            <button class="tab-btn" onclick="switchTab('audio', event)">Звук</button>
+            <button class="tab-btn" onclick="switchTab('display', event)">Экран</button>
+        </div>
+        
+        <div id="tab-images" class="tab-content active">
+            <div class="settings-row">
+                <label>Изображение (Молчит):</label>
+                <input type="file" id="idle-image-input" accept="image/*">
+            </div>
+
+            <div class="settings-row">
+                <label>Изображение (Говорит):</label>
+                <input type="file" id="speaking-image-input" accept="image/*">
+            </div>
+            <p style="font-size: 11px; color: #aaa; margin-top: -10px; line-height: 1.4;">
+                Или просто положите файлы <code>idle.png</code> и <code>speaking.png</code> рядом с этим файлом <code>index.html</code> и перезагрузите страницу.
+            </p>
+        </div>
+        
+        <div id="tab-audio" class="tab-content">
+            <div class="settings-row">
+                <label>Порог громкости: <span id="threshold-value">15</span></label>
+                <input type="range" id="threshold-slider" min="1" max="100" value="15">
+            </div>
+
+            <div class="settings-row">
+                <label>Уровень микрофона:</label>
+                <div id="volume-meter">
+                    <div id="volume-fill"></div>
+                </div>
+            </div>
+            <button id="start-btn" class="btn-primary">Включить микрофон</button>
+        </div>
+        
+        <div id="tab-display" class="tab-content">
+            <div class="settings-row">
+                <label>Цвет фона (для хромакея):</label>
+                <input type="color" id="bg-color-picker" value="#00ff00">
+            </div>
+            <div class="settings-row" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ddd;">
+                <input type="checkbox" id="animation-toggle" checked style="width: 16px; height: 16px;">
+                Анимация прыжка
+            </div>
+        </div>
+
+        <button id="hide-settings-btn" class="btn-secondary" style="margin-top: 15px;">Скрыть настройки</button>
+        <div class="hint">Нажмите клавишу <strong>S</strong> чтобы показать настройки</div>
+    </div>
+
+    <div id="avatar-container" class="speaking-animation">
+        <img id="idle-img" class="avatar-img active" src="idle.png" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'300\' height=\'300\'><rect width=\'300\' height=\'300\' rx=\'20\' fill=\'%232d3436\'/><text x=\'50%\' y=\'50%\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'white\' font-size=\'24\' font-family=\'sans-serif\'>Молчит (idle.png)</text></svg>'" alt="Idle">
+        <img id="speaking-img" class="avatar-img" src="speaking.png" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'300\' height=\'300\'><rect width=\'300\' height=\'300\' rx=\'20\' fill=\'%23d63031\'/><text x=\'50%\' y=\'50%\' dominant-baseline=\'middle\' text-anchor=\'middle\' fill=\'white\' font-size=\'24\' font-family=\'sans-serif\'>Говорит (speaking.png)</text></svg>'" alt="Speaking">
+    </div>
+
+    <script>
+        const idleImg = document.getElementById('idle-img');
+        const speakingImg = document.getElementById('speaking-img');
+        const avatarContainer = document.getElementById('avatar-container');
+        
+        const idleInput = document.getElementById('idle-image-input');
+        const speakingInput = document.getElementById('speaking-image-input');
+        
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const thresholdValue = document.getElementById('threshold-value');
+        const volumeFill = document.getElementById('volume-fill');
+        const bgColorPicker = document.getElementById('bg-color-picker');
+        const animationToggle = document.getElementById('animation-toggle');
+        
+        const startBtn = document.getElementById('start-btn');
+        const hideSettingsBtn = document.getElementById('hide-settings-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        let isSpeaking = false;
+        
+        // Загрузка сохраненных настроек
+        let threshold = localStorage.getItem('pngtuber_threshold') || 15;
+        let bgColor = localStorage.getItem('pngtuber_bgcolor') || '#00ff00';
+        let enableAnim = localStorage.getItem('pngtuber_anim') !== 'false';
+        
+        // Применение начальных настроек
+        thresholdSlider.value = threshold;
+        thresholdValue.textContent = threshold;
+        bgColorPicker.value = bgColor;
+        document.documentElement.style.setProperty('--bg-color', bgColor);
+        animationToggle.checked = enableAnim;
+        if (!enableAnim) avatarContainer.style.animationName = 'none';
+        
+        // Вкладки
+        window.switchTab = function(tabId, event) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            if (event) event.target.classList.add('active');
+        }
+
+        // Загрузка изображений пользователем
+        idleInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                idleImg.src = url;
+            }
+        });
+
+        speakingInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                speakingImg.src = url;
+            }
+        });
+
+        // Настройки
+        thresholdSlider.addEventListener('input', function(e) {
+            threshold = e.target.value;
+            thresholdValue.textContent = threshold;
+            localStorage.setItem('pngtuber_threshold', threshold);
+        });
+        
+        bgColorPicker.addEventListener('input', function(e) {
+            bgColor = e.target.value;
+            document.documentElement.style.setProperty('--bg-color', bgColor);
+            localStorage.setItem('pngtuber_bgcolor', bgColor);
+        });
+        
+        animationToggle.addEventListener('change', function(e) {
+            enableAnim = e.target.checked;
+            localStorage.setItem('pngtuber_anim', enableAnim);
+            if (!enableAnim) {
+                avatarContainer.style.animationName = 'none';
+            } else if (isSpeaking) {
+                avatarContainer.style.animationName = 'bounce';
+            }
+        });
+
+        // Горячие клавиши и UI
+        hideSettingsBtn.addEventListener('click', () => {
+            settingsPanel.classList.add('hidden');
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 's') {
+                settingsPanel.classList.toggle('hidden');
+            }
+        });
+
+        // Аудио логика
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                analyser.smoothingTimeConstant = 0.6;
+                analyser.fftSize = 512; // Меньше для оптимизации
+
+                microphone.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+
+                startBtn.textContent = 'Микрофон подключен';
+                startBtn.disabled = true;
+
+                javascriptNode.onaudioprocess = function() {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    let values = 0;
+                    const length = array.length;
+                    for (let i = 0; i < length; i++) {
+                        values += array[i];
+                    }
+                    const average = values / length;
+                    
+                    // Оптимизация: обновляем UI только если панель открыта (для производительности)
+                    if (!settingsPanel.classList.contains('hidden')) {
+                        volumeFill.style.width = Math.min(100, average * 1.5) + '%';
+                    }
+
+                    // Переключение состояния аватара
+                    if (average > threshold) {
+                        if (!isSpeaking) {
+                            isSpeaking = true;
+                            idleImg.classList.remove('active');
+                            speakingImg.classList.add('active');
+                            if (enableAnim) avatarContainer.style.animationName = 'bounce';
+                        }
+                    } else {
+                        if (isSpeaking) {
+                            isSpeaking = false;
+                            speakingImg.classList.remove('active');
+                            idleImg.classList.add('active');
+                            avatarContainer.style.animationName = 'none';
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Ошибка доступа к микрофону:', err);
+                if (err.name !== "NotAllowedError") {
+                    startBtn.textContent = 'Ошибка! Проверьте микрофон';
+                } else {
+                    startBtn.textContent = 'Разрешите доступ';
+                }
+            }
+        }
+
+        startBtn.addEventListener('click', initAudio);
+
+        // Попытка автозапуска для OBS (в OBS обычно не требуется взаимодействие пользователя)
+        setTimeout(() => {
+            initAudio().catch(e => console.log('Autoplay blocked. Needs user interaction.'));
+        }, 1000);
+        
+        // Останавливаем анимацию изначально
+        avatarContainer.style.animationName = 'none';
+    </script>
+</body>
+</html>
