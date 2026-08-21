@@ -58,13 +58,11 @@ fn main() -> wry::Result<()> {
     let window = WindowBuilder::new()
         .with_title("PNGTuber (Rust)")
         .with_inner_size(tao::dpi::LogicalSize::new(500.0, 600.0))
-        .with_transparent(true)
         .with_decorations(true)
         .build(&event_loop)
         .unwrap();
 
     let _webview = WebViewBuilder::new(&window)
-        .with_transparent(true)
         .with_url(&format!("http://127.0.0.1:{}/index.html", port))
         .build()?;
 
