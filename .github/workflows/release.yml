@@ -15,67 +15,78 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        include:
-          - os: ubuntu-latest
-            artifact_name: pngtuber-linux-x86_64
-            target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            artifact_name: pngtuber-windows.exe
-            target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            artifact_name: pngtuber-macos-universal
-            target: aarch64-apple-darwin
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Install dependencies (Linux)
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller qtpy
+
+      - name: Build Executable (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --add-data "index.html;." --add-data "idle.png;." --add-data "speaking.png;." --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          Move-Item -Path dist\main.exe -Destination dist\PNGTuber-Windows.exe
+
+      - name: Build Executable (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
+          # Install dependencies required for PyQt6
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 libopengl0
+          pyinstaller --noconfirm --onefile --windowed --add-data "index.html:." --add-data "idle.png:." --add-data "speaking.png:." --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          mv dist/main dist/PNGTuber-Linux
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+      - name: Build Executable (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --add-data "index.html:." --add-data "idle.png:." --add-data "speaking.png:." --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          mv dist/main dist/PNGTuber-macOS
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
         with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-
-      - name: Build project
-        run: cargo build --release
-
-      - name: Rename artifact (Linux/macOS)
-        if: matrix.os != 'windows-latest'
-        run: mv target/release/pngtuber-rust target/release/${{ matrix.artifact_name }}
-
-      - name: Rename artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        run: mv target/release/pngtuber-rust.exe target/release/${{ matrix.artifact_name }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: target/release/${{ matrix.artifact_name }}
+          name: Executables-${{ matrix.os }}
+          path: |
+            dist/PNGTuber-Windows.exe
+            dist/PNGTuber-Linux
+            dist/PNGTuber-macOS
+          if-no-files-found: ignore
 
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         with:
-          path: artifacts
+          path: dist
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/pngtuber-linux-x86_64/pngtuber-linux-x86_64
-            artifacts/pngtuber-windows.exe/pngtuber-windows.exe
-            artifacts/pngtuber-macos-universal/pngtuber-macos-universal
+            dist/**/*.exe
+            dist/**/PNGTuber-Linux
+            dist/**/PNGTuber-macOS
+          tag_name: "v1.0.0"
+          name: "PNGTuber 1.0.0"
+          body: "Легкий PNGTuber (Cross-platform Python/PyQt6)"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,1 @@
+pywebview[qt]\nPyQt6\nPyQt6-WebEngine

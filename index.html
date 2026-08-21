@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оптимизированный PNGTuber</title>
+    <style>
+        :root {
+            --bg-color: #00ff00;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color); /* Зеленый фон для хромакея */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            transition: background-color 0.3s;
+        }
+        
+        #avatar-container {
+            position: relative;
+            transition: transform 0.1s ease-out;
+            will-change: transform;
+        }
+
+        .avatar-img {
+            max-height: 90vh;
+            max-width: 90vw;
+            display: none;
+            object-fit: contain;
+            color: transparent; /* hide broken alt text */
+            filter: drop-shadow(0 10px 15px rgba(0,0,0,0.2));
+        }
+
+        .avatar-img.active {
+            display: block;
+        }
+
+        /* Анимация при разговоре */
+        .speaking-animation {
+            animation: bounce 0.25s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-15px); }
+        }
+
+        /* Меню настроек - Glassmorphism */
+        #settings-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(30, 30, 40, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 1000;
+            width: 300px;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        #settings-panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-20px);
+        }
+
+        h3 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
+        .settings-row {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #ddd;
+            font-weight: 500;
+        }
+
+        input[type="file"] {
+            font-size: 12px;
+            width: calc(100% - 18px);
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #6c5ce7;
+            cursor: pointer;
+        }
+        
+        input[type="color"] {
+            width: 100%;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: none;
+        }
+
+        .btn-primary, .btn-secondary {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s, transform 0.1s;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            color: white;
+            box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5b4bc4, #8e86eb);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        #volume-meter {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        #volume-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00b894, #00cec9, #0984e3);
+            width: 0%;
+            transition: width 0.1s;
+        }
+
+        .hint {
+            font-size: 11px;
+            color: #999;
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .tab-buttons {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: none;
+            color: #aaa;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+        }
+        
+        .tab-btn.active {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="settings-panel">
+        <h3>Оптимизированный PNGTuber</h3>
+        
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('images', event)">Аватар</button>
+            <button class="tab-btn" onclick="switchTab('audio', event)">Звук</button>
+            <button class="tab-btn" onclick="switchTab('display', event)">Экран</button>
+        </div>
+        
+        <div id="tab-images" class="tab-content active">
+            <div class="settings-row">
+                <label>Изображение (Молчит):</label>
+                <input type="file" id="idle-image-input" accept="image/*">
+            </div>
+
+            <div class="settings-row">
+                <label>Изображение (Говорит):</label>
+                <input type="file" id="speaking-image-input" accept="image/*">
+            </div>
+            
+            <div class="settings-row">
+                <label>Изображение (Моргает молча):</label>
+                <input type="file" id="idle-blink-input" accept="image/*">
+            </div>
+            <div class="settings-row">
+                <label>Изображение (Моргает и говорит):</label>
+                <input type="file" id="speaking-blink-input" accept="image/*">
+            </div>
+            <p style="font-size: 11px; color: #aaa; margin-top: -10px; line-height: 1.4;">
+                Или файлы: <code>idle.png</code>, <code>speaking.png</code>, <code>idle_blink.png</code>, <code>speaking_blink.png</code>.
+            </p>
+
+        </div>
+        
+        <div id="tab-audio" class="tab-content">
+            <div class="settings-row">
+                <label>Порог громкости: <span id="threshold-value">15</span></label>
+                <input type="range" id="threshold-slider" min="1" max="100" value="15">
+            </div>
+
+            <div class="settings-row">
+                <label>Уровень микрофона:</label>
+                <div id="volume-meter">
+                    <div id="volume-fill"></div>
+                </div>
+            </div>
+            <button id="start-btn" class="btn-primary">Включить микрофон</button>
+        </div>
+        
+        <div id="tab-display" class="tab-content">
+            <div class="settings-row">
+                <label>Цвет фона (для хромакея):</label>
+                <input type="color" id="bg-color-picker" value="#00ff00">
+            </div>
+            <div class="settings-row" style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ddd;">
+                <input type="checkbox" id="animation-toggle" checked style="width: 16px; height: 16px;">
+                Анимация прыжка
+            </div>
+        </div>
+
+        
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button id="save-scene-btn" class="btn-primary" style="background: linear-gradient(135deg, #00b894, #00cec9); box-shadow: none;">Сохранить сцену</button>
+            <button id="load-scene-btn" class="btn-secondary" style="background: rgba(255,255,255,0.2);">Загрузить сцену</button>
+        </div>
+        <button id="hide-settings-btn" class="btn-secondary" style="margin-top: 15px;">Скрыть настройки</button>
+
+        <div class="hint">Нажмите клавишу <strong>S</strong> чтобы показать настройки</div>
+    </div>
+
+    <div id="avatar-container" class="speaking-animation">
+        
+        <img id="idle-img" class="avatar-img active" src="idle.png" alt="Idle">
+        <img id="speaking-img" class="avatar-img" src="speaking.png" alt="Speaking">
+        <img id="idle-blink-img" class="avatar-img" src="idle_blink.png" alt="Idle Blink">
+        <img id="speaking-blink-img" class="avatar-img" src="speaking_blink.png" alt="Speaking Blink">
+
+    </div>
+
+    <script>
+        
+        const idleImg = document.getElementById('idle-img');
+        const speakingImg = document.getElementById('speaking-img');
+        const idleBlinkImg = document.getElementById('idle-blink-img');
+        const speakingBlinkImg = document.getElementById('speaking-blink-img');
+        
+        const idleInput = document.getElementById('idle-image-input');
+        const speakingInput = document.getElementById('speaking-image-input');
+        const idleBlinkInput = document.getElementById('idle-blink-input');
+        const speakingBlinkInput = document.getElementById('speaking-blink-input');
+
+        const avatarContainer = document.getElementById('avatar-container');
+        
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const thresholdValue = document.getElementById('threshold-value');
+        const volumeFill = document.getElementById('volume-fill');
+        const bgColorPicker = document.getElementById('bg-color-picker');
+        const animationToggle = document.getElementById('animation-toggle');
+        
+        const startBtn = document.getElementById('start-btn');
+        const hideSettingsBtn = document.getElementById('hide-settings-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        let isSpeaking = false;
+        
+        // Загрузка сохраненных настроек
+        let threshold = localStorage.getItem('pngtuber_threshold') || 15;
+        let bgColor = localStorage.getItem('pngtuber_bgcolor') || '#00ff00';
+        let enableAnim = localStorage.getItem('pngtuber_anim') !== 'false';
+        
+        // Применение начальных настроек
+        thresholdSlider.value = threshold;
+        thresholdValue.textContent = threshold;
+        bgColorPicker.value = bgColor;
+        document.documentElement.style.setProperty('--bg-color', bgColor);
+        animationToggle.checked = enableAnim;
+        if (!enableAnim) avatarContainer.style.animationName = 'none';
+        
+        // Вкладки
+        window.switchTab = function(tabId, event) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            if (event) event.target.classList.add('active');
+        }
+
+        // Загрузка изображений пользователем
+        
+        
+        let idleB64 = '';
+        let speakingB64 = '';
+        let idleBlinkB64 = '';
+        let speakingBlinkB64 = '';
+
+        let isBlinking = false;
+
+        function updateAvatarState() {
+            document.querySelectorAll('.avatar-img').forEach(img => img.classList.remove('active'));
+            
+            let activeImg;
+            if (isSpeaking) {
+                if (isBlinking && speakingBlinkImg.naturalWidth > 0) activeImg = speakingBlinkImg;
+                else if (speakingImg.naturalWidth > 0) activeImg = speakingImg;
+                else activeImg = idleImg; // fallback
+            } else {
+                if (isBlinking && idleBlinkImg.naturalWidth > 0) activeImg = idleBlinkImg;
+                else activeImg = idleImg;
+            }
+            activeImg.classList.add('active');
+
+            if (enableAnim && isSpeaking) avatarContainer.style.animationName = 'bounce';
+            else avatarContainer.style.animationName = 'none';
+        }
+
+        // Blink loop (blink for 150ms every 3-6 seconds)
+        function scheduleNextBlink() {
+            const timeToNextBlink = 3000 + Math.random() * 3000;
+            setTimeout(() => {
+                isBlinking = true;
+                updateAvatarState();
+                setTimeout(() => {
+                    isBlinking = false;
+                    updateAvatarState();
+                    scheduleNextBlink();
+                }, 150); // Blink duration
+            }, timeToNextBlink);
+        }
+        scheduleNextBlink();
+
+        // New File loaders
+        
+        function setupFileInput(inputElement, imgElement, varName) {
+            inputElement.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        const b64 = evt.target.result;
+                        imgElement.src = b64;
+                        if (varName === 'idle') idleB64 = b64;
+                        if (varName === 'speaking') speakingB64 = b64;
+                        if (varName === 'idle_blink') idleBlinkB64 = b64;
+                        if (varName === 'speaking_blink') speakingBlinkB64 = b64;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+        setupFileInput(idleInput, idleImg, 'idle');
+        setupFileInput(speakingInput, speakingImg, 'speaking');
+        setupFileInput(idleBlinkInput, idleBlinkImg, 'idle_blink');
+        setupFileInput(speakingBlinkInput, speakingBlinkImg, 'speaking_blink');
+
+                }
+            });
+        }
+        setupFileInput(idleInput, idleImg);
+        setupFileInput(speakingInput, speakingImg);
+        setupFileInput(idleBlinkInput, idleBlinkImg);
+        setupFileInput(speakingBlinkInput, speakingBlinkImg);
+
+
+        // Настройки
+        thresholdSlider.addEventListener('input', function(e) {
+            threshold = e.target.value;
+            thresholdValue.textContent = threshold;
+            localStorage.setItem('pngtuber_threshold', threshold);
+        });
+        
+        bgColorPicker.addEventListener('input', function(e) {
+            bgColor = e.target.value;
+            document.documentElement.style.setProperty('--bg-color', bgColor);
+            localStorage.setItem('pngtuber_bgcolor', bgColor);
+        });
+        
+        animationToggle.addEventListener('change', function(e) {
+            enableAnim = e.target.checked;
+            localStorage.setItem('pngtuber_anim', enableAnim);
+            if (!enableAnim) {
+                avatarContainer.style.animationName = 'none';
+            } else if (isSpeaking) {
+                avatarContainer.style.animationName = 'bounce';
+            }
+        });
+
+        // Горячие клавиши и UI
+        hideSettingsBtn.addEventListener('click', () => {
+            settingsPanel.classList.add('hidden');
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 's') {
+                settingsPanel.classList.toggle('hidden');
+            }
+        });
+
+        // Аудио логика
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+                analyser.smoothingTimeConstant = 0.6;
+                analyser.fftSize = 512; // Меньше для оптимизации
+
+                microphone.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+
+                startBtn.textContent = 'Микрофон подключен';
+                startBtn.disabled = true;
+
+                javascriptNode.onaudioprocess = function() {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    let values = 0;
+                    const length = array.length;
+                    for (let i = 0; i < length; i++) {
+                        values += array[i];
+                    }
+                    const average = values / length;
+                    
+                    // Оптимизация: обновляем UI только если панель открыта (для производительности)
+                    if (!settingsPanel.classList.contains('hidden')) {
+                        volumeFill.style.width = Math.min(100, average * 1.5) + '%';
+                    }
+
+                    if (average > threshold) {
+                        if (!isSpeaking) {
+                            isSpeaking = true;
+                            updateAvatarState();
+                        }
+                    } else {
+                        if (isSpeaking) {
+                            isSpeaking = false;
+                            updateAvatarState();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Ошибка доступа к микрофону:', err);
+                if (err.name !== "NotAllowedError") {
+                    startBtn.textContent = 'Ошибка! Проверьте микрофон';
+                } else {
+                    startBtn.textContent = 'Разрешите доступ';
+                }
+            }
+        }
+
+        startBtn.addEventListener('click', initAudio);
+
+        // Попытка автозапуска для OBS (в OBS обычно не требуется взаимодействие пользователя)
+        setTimeout(() => {
+            initAudio().catch(e => console.log('Autoplay blocked. Needs user interaction.'));
+        }, 1000);
+        
+        
+        document.getElementById('save-scene-btn').addEventListener('click', async () => {
+            if (!window.pywebview) return alert('Сохранение доступно только в десктопной версии!');
+            
+            const config = JSON.stringify({
+                threshold: threshold,
+                bgColor: bgColor,
+                enableAnim: enableAnim
+            });
+            
+            const btn = document.getElementById('save-scene-btn');
+            btn.textContent = 'Сохранение...';
+            
+            const success = await window.pywebview.api.save_scene(
+                config, idleB64, speakingB64, idleBlinkB64, speakingBlinkB64
+            );
+            
+            btn.textContent = success ? 'Сохранено!' : 'Ошибка';
+            setTimeout(() => btn.textContent = 'Сохранить сцену', 2000);
+        });
+
+        document.getElementById('load-scene-btn').addEventListener('click', async () => {
+            if (!window.pywebview) return alert('Загрузка доступна только в десктопной версии!');
+            
+            const btn = document.getElementById('load-scene-btn');
+            btn.textContent = 'Загрузка...';
+            
+            const scene = await window.pywebview.api.load_scene();
+            if (scene) {
+                if (scene.config) {
+                    threshold = scene.config.threshold || 15;
+                    bgColor = scene.config.bgColor || '#00ff00';
+                    enableAnim = scene.config.enableAnim !== false;
+                    
+                    // Apply config
+                    thresholdSlider.value = threshold;
+                    thresholdValue.textContent = threshold;
+                    localStorage.setItem('pngtuber_threshold', threshold);
+                    
+                    bgColorPicker.value = bgColor;
+                    document.documentElement.style.setProperty('--bg-color', bgColor);
+                    localStorage.setItem('pngtuber_bgcolor', bgColor);
+                    
+                    animationToggle.checked = enableAnim;
+                    localStorage.setItem('pngtuber_anim', enableAnim);
+                    if (!enableAnim) avatarContainer.style.animationName = 'none';
+                }
+                
+                if (scene.idle) { idleB64 = scene.idle; idleImg.src = scene.idle; }
+                if (scene.speaking) { speakingB64 = scene.speaking; speakingImg.src = scene.speaking; }
+                if (scene.idle_blink) { idleBlinkB64 = scene.idle_blink; idleBlinkImg.src = scene.idle_blink; }
+                if (scene.speaking_blink) { speakingBlinkB64 = scene.speaking_blink; speakingBlinkImg.src = scene.speaking_blink; }
+                
+                btn.textContent = 'Загружено!';
+            } else {
+                btn.textContent = 'Отменено';
+            }
+            setTimeout(() => btn.textContent = 'Загрузить сцену', 2000);
+        });
+
+        // Останавливаем анимацию изначально
+        avatarContainer.style.animationName = 'none';
+    </script>
+</body>
+</html>
