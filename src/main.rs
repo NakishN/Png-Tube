@@ -55,8 +55,8 @@ fn main() -> wry::Result<()> {
             Response::builder()
                 .header("Content-Type", mime)
                 .header("Access-Control-Allow-Origin", "*")
-                .body(body)
-                .map_err(Into::into)
+                .body(body.into())
+                .unwrap()
         })
         .with_url("app://localhost/index.html")
         .build()?;
