@@ -1,1 +1,3 @@
-pywebview[qt]\nPyQt6\nPyQt6-WebEngine
+pywebview[qt]
+PyQt6
+PyQt6-WebEngine
