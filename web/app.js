@@ -241,9 +241,11 @@
         ui.start.disabled = true;
         ui.start.textContent = 'Подключение…';
         try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                audio: settings.deviceId ? { deviceId: { exact: settings.deviceId } } : true
-            });
+            // Обработка голоса (шумо-/эхоподавление, автоусиление) не нужна и заметно грузит CPU;
+            // автоусиление к тому же выравнивает громкость и ломает порог срабатывания
+            const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+            if (settings.deviceId) audio.deviceId = { exact: settings.deviceId };
+            stream = await navigator.mediaDevices.getUserMedia({ audio });
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 1024;
