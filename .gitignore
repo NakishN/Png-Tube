@@ -1,1 +1,7 @@
-/target
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.spec
+*.pngtuber

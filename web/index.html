@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNGTuber</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="avatar-container">
+        <div id="avatar-bounce">
+            <img id="idle-img" class="avatar-img active" src="idle.png" alt="">
+            <img id="speaking-img" class="avatar-img" src="speaking.png" alt="">
+            <img id="idle_blink-img" class="avatar-img" alt="">
+            <img id="speaking_blink-img" class="avatar-img" alt="">
+        </div>
+    </div>
+
+    <aside id="settings-panel">
+        <div class="panel-head">
+            <h1>PNGTuber</h1>
+            <div class="status" id="status"><i></i><span id="status-text">микрофон выкл.</span></div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="images">Аватар</button>
+            <button class="tab-btn" data-tab="audio">Звук</button>
+            <button class="tab-btn" data-tab="display">Экран</button>
+        </div>
+
+        <section id="tab-images" class="tab-content active">
+            <div class="slots">
+                <label class="slot" data-slot="idle"><img hidden alt=""><span>Молчит</span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
+                <label class="slot" data-slot="speaking"><img hidden alt=""><span>Говорит</span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
+                <label class="slot" data-slot="idle_blink"><img hidden alt=""><span>Моргает <span class="opt">(молчит)</span></span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
+                <label class="slot" data-slot="speaking_blink"><img hidden alt=""><span>Моргает <span class="opt">(говорит)</span></span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
+            </div>
+            <p class="footer" style="border:0;padding-top:10px;margin-top:6px;display:block;line-height:1.5">
+                Нажмите на слот или перетащите PNG прямо на него. Картинки моргания необязательны.
+            </p>
+        </section>
+
+        <section id="tab-audio" class="tab-content">
+            <div class="row">
+                <label for="device-select">Микрофон</label>
+                <select id="device-select"><option value="">По умолчанию</option></select>
+            </div>
+            <div class="row">
+                <div class="row-label">Порог срабатывания <b id="threshold-value">15</b></div>
+                <input type="range" id="threshold-slider" min="1" max="80" value="15">
+            </div>
+            <div class="row">
+                <div class="row-label">Задержка закрытия рта <b id="hold-value">150 мс</b></div>
+                <input type="range" id="hold-slider" min="0" max="600" step="25" value="150">
+            </div>
+            <div class="row">
+                <div class="row-label">Уровень</div>
+                <div id="volume-meter"><div id="volume-fill"></div><div id="threshold-mark"></div></div>
+            </div>
+            <button id="start-btn" class="btn primary">Включить микрофон</button>
+        </section>
+
+        <section id="tab-display" class="tab-content">
+            <div class="row">
+                <label for="bg-color-picker">Цвет фона (для хромакея)</label>
+                <input type="color" id="bg-color-picker" value="#00ff00">
+            </div>
+            <div class="row">
+                <div class="row-label">Размер аватара <b id="scale-value">100%</b></div>
+                <input type="range" id="scale-slider" min="30" max="100" value="100">
+            </div>
+            <label class="check"><input type="checkbox" id="animation-toggle" checked> Подпрыгивание при разговоре</label>
+            <label class="check"><input type="checkbox" id="blink-toggle" checked> Автоматическое моргание</label>
+            <label class="check"><input type="checkbox" id="flip-toggle"> Отразить по горизонтали</label>
+        </section>
+
+        <div class="btn-row">
+            <button id="save-scene-btn" class="btn">Сохранить сцену</button>
+            <button id="load-scene-btn" class="btn">Загрузить сцену</button>
+        </div>
+        <div class="footer">
+            <span><kbd>S</kbd> — показать / скрыть</span>
+            <button class="link" id="hide-settings-btn">Скрыть</button>
+        </div>
+    </aside>
+
+    <div id="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -35,7 +35,7 @@ jobs:
       - name: Build Executable (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --noconfirm --onefile --windowed --add-data "index.html;." --add-data "idle.png;." --add-data "speaking.png;." --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          pyinstaller --noconfirm --onefile --windowed --add-data "web;web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
           Move-Item -Path dist\main.exe -Destination dist\PNGTuber-Windows.exe
 
       - name: Build Executable (Linux)
@@ -44,13 +44,13 @@ jobs:
           # Install dependencies required for PyQt6
           sudo apt-get update
           sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 libopengl0
-          pyinstaller --noconfirm --onefile --windowed --add-data "index.html:." --add-data "idle.png:." --add-data "speaking.png:." --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          pyinstaller --noconfirm --onefile --windowed --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
           mv dist/main dist/PNGTuber-Linux
 
       - name: Build Executable (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --noconfirm --onefile --windowed --add-data "index.html:." --add-data "idle.png:." --add-data "speaking.png:." --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          pyinstaller --noconfirm --onefile --windowed --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
           mv dist/main dist/PNGTuber-macOS
 
       - name: Upload Artifact
