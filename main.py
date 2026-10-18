@@ -4,10 +4,18 @@ import json
 import mimetypes
 import os
 import sys
+import threading
+import time
 import zipfile
 from pathlib import Path
 
 import webview
+
+try:
+    import numpy as np
+    import sounddevice as sd
+except (ImportError, OSError):   # OSError: в системе нет PortAudio
+    np = sd = None
 
 APP_NAME = 'PNGTuber'
 SLOTS = ('idle', 'speaking', 'idle_blink', 'speaking_blink')
@@ -51,6 +59,92 @@ def first_path(result):
     return result if isinstance(result, str) else result[0]
 
 
+class Microphone:
+    """Захват звука через PortAudio. Движок браузера микрофон не открывает, поэтому системного запроса разрешения нет."""
+
+    TICK = 0.02             # шаг расчёта уровня, с
+    METER_EVERY = 3         # шкалу уровня шлём на страницу раз в N шагов, и только пока открыта панель
+
+    def __init__(self, window_getter):
+        self.window_getter = window_getter
+        self.stream = None
+        self.raw = 0.0
+        self.threshold = 15
+        self.hold = 0.15
+        self.meter = False
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def device_names():
+        if sd is None:
+            return []
+        return [d['name'] for d in sd.query_devices()
+                if d['max_input_channels'] > 0 and d['hostapi'] == sd.default.hostapi]
+
+    @staticmethod
+    def device_index(name):
+        if not name:
+            return None
+        for i, d in enumerate(sd.query_devices()):
+            if d['name'] == name and d['max_input_channels'] > 0 and d['hostapi'] == sd.default.hostapi:
+                return i
+        return None
+
+    def _callback(self, indata, frames, time_info, status):
+        self.raw = min(100.0, float(np.sqrt(np.mean(np.square(indata)))) * 400)
+
+    def _js(self, code):
+        # каждый вызов evaluate_js оставляет мусор в движке страницы, поэтому шлём только изменения
+        try:
+            self.window_getter().evaluate_js(code)
+        except Exception:
+            pass
+
+    def _loop(self, stream):
+        level = 0.0
+        last_loud = 0.0
+        speaking = False
+        shown = -1
+        tick = 0
+        while self.stream is stream:
+            raw = self.raw
+            level += (raw - level) * (0.6 if raw > level else 0.2)   # быстрая атака, плавный спад
+            now = time.monotonic()
+            if level > self.threshold:
+                last_loud = now
+            now_speaking = now - last_loud < self.hold
+            if now_speaking != speaking:
+                speaking = now_speaking
+                self._js(f'window.__micState&&window.__micState({"true" if speaking else "false"})')
+            tick += 1
+            if self.meter and tick % self.METER_EVERY == 0:
+                width = round(min(100, level * 1.5))
+                if width != shown:
+                    shown = width
+                    self._js(f'window.__micMeter&&window.__micMeter({width})')
+            time.sleep(self.TICK)
+        if speaking:
+            self._js('window.__micState&&window.__micState(false)')
+
+    def start(self, name):
+        if sd is None:
+            raise RuntimeError('не найдена библиотека PortAudio (sounddevice)')
+        with self.lock:
+            self.stop()
+            stream = sd.InputStream(device=self.device_index(name), channels=1, dtype='float32',
+                                    blocksize=1024, callback=self._callback)
+            stream.start()
+            self.stream = stream
+            self.raw = 0.0
+            threading.Thread(target=self._loop, args=(stream,), daemon=True).start()
+
+    def stop(self):
+        stream, self.stream = self.stream, None
+        if stream is not None:
+            stream.stop()
+            stream.close()
+
+
 class Api:
     """Методы, доступные из JavaScript как window.pywebview.api.*"""
 
@@ -60,6 +154,7 @@ class Api:
         self.config_dir = get_config_dir()
         self.settings_file = self.config_dir / 'settings.json'
         self.images_dir = self.config_dir / 'images'
+        self.mic = Microphone(lambda: self.window)
 
     # ---- Состояние между запусками ----
 
@@ -114,6 +209,33 @@ class Api:
         except OSError as e:
             print('Не удалось прочитать изображение:', e)
             return None
+
+    # ---- Микрофон ----
+
+    def get_audio_devices(self):
+        try:
+            return {'available': sd is not None, 'devices': Microphone.device_names()}
+        except Exception as e:
+            print('Не удалось получить список микрофонов:', e)
+            return {'available': False, 'devices': []}
+
+    def start_audio(self, device_name):
+        try:
+            self.mic.start(device_name)
+            return {'ok': True}
+        except Exception as e:
+            print('Не удалось открыть микрофон:', e)
+            return {'ok': False, 'error': str(e)}
+
+    def stop_audio(self):
+        self.mic.stop()
+
+    def set_audio_params(self, threshold, hold_ms):
+        self.mic.threshold = float(threshold)
+        self.mic.hold = float(hold_ms) / 1000
+
+    def set_meter(self, on):
+        self.mic.meter = bool(on)
 
     # ---- Сцены (.pngtuber) ----
 

@@ -76,6 +76,15 @@
 
     const loaded = (img) => img.complete && img.naturalWidth > 0;
 
+    let shown = imgs.idle;  // что сейчас показано: лишние перекраски копят память в Chromium
+    let bouncing = false;
+    // Одна анимация на всё время работы: пересоздание CSS-анимации при каждой фразе копит память
+    const bounceAnim = bounce.animate(
+        [{ transform: 'translateY(0)' }, { transform: 'translateY(-2.2vh)' }],
+        { duration: 220, iterations: Infinity, direction: 'alternate', easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }
+    );
+    bounceAnim.pause();
+
     function updateAvatar() {
         let target;
         if (isSpeaking) {
@@ -86,8 +95,17 @@
         } else {
             target = (isBlinking && loaded(imgs.idle_blink)) ? imgs.idle_blink : imgs.idle;
         }
-        for (const img of Object.values(imgs)) img.classList.toggle('active', img === target);
-        bounce.classList.toggle('bouncing', settings.enableAnim && isSpeaking);
+        if (target !== shown) {
+            if (shown) shown.classList.remove('active');
+            target.classList.add('active');
+            shown = target;
+        }
+        const wantBounce = settings.enableAnim && isSpeaking;
+        if (wantBounce !== bouncing) {
+            bouncing = wantBounce;
+            if (bouncing) bounceAnim.play();
+            else { bounceAnim.pause(); bounceAnim.currentTime = 0; }
+        }
     }
 
     for (const img of Object.values(imgs)) img.addEventListener('load', updateAvatar);
@@ -178,6 +196,7 @@
         // transform на контейнере конфликтует с анимацией прыжка — отражаем сами изображения
         for (const img of Object.values(imgs)) img.style.transform = settings.flip ? 'scaleX(-1)' : '';
         updateAvatar();
+        syncAudioParams();
     }
 
     const bind = (el, event, key, parse) => el.addEventListener(event, () => {
@@ -199,7 +218,7 @@
         document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + btn.dataset.tab));
     }));
 
-    const togglePanel = (hide) => panel.classList.toggle('hidden', hide);
+    const togglePanel = (hide) => { panel.classList.toggle('hidden', hide); syncAudioParams(); };
     $('hide-settings-btn').addEventListener('click', () => togglePanel(true));
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -208,13 +227,9 @@
     });
 
     // ---------- Звук ----------
-    let audioCtx = null;
-    let analyser = null;
-    let stream = null;
-    let buffer = null;
-    let rafId = 0;
-    let level = 0;          // сглаженная громкость 0..100
-    let lastLoud = 0;       // момент, когда громкость последний раз превышала порог
+    // Микрофон читает Python (PortAudio) и присылает уровень сюда: браузерный getUserMedia
+    // потребовал бы разрешения у системы при каждом запуске
+    let micOn = false;
 
     function setStatus(state, text) {
         ui.status.className = 'status' + (state ? ' ' + state : '');
@@ -222,86 +237,62 @@
     }
 
     async function listDevices() {
+        const api = backend();
+        if (!api) return;
         try {
-            const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+            const { devices } = await api.get_audio_devices();
             ui.device.innerHTML = '<option value="">По умолчанию</option>';
-            devices.forEach((d, i) => {
+            devices.forEach(name => {
                 const opt = document.createElement('option');
-                opt.value = d.deviceId;
-                opt.textContent = d.label || ('Микрофон ' + (i + 1));
+                opt.value = name;
+                opt.textContent = name;
                 ui.device.appendChild(opt);
             });
-            ui.device.value = devices.some(d => d.deviceId === settings.deviceId) ? settings.deviceId : '';
+            ui.device.value = devices.includes(settings.deviceId) ? settings.deviceId : '';
         } catch (_) {}
     }
 
-    function stopAudio() {
-        cancelAnimationFrame(rafId);
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        if (audioCtx) audioCtx.close();
-        audioCtx = analyser = stream = null;
-    }
-
     async function startAudio() {
-        stopAudio();
+        const api = backend();
+        if (!api) {
+            setStatus('', 'только в приложении');
+            return toast('Микрофон доступен только в десктопной версии');
+        }
         ui.start.disabled = true;
         ui.start.textContent = 'Подключение…';
-        try {
-            // Обработка голоса (шумо-/эхоподавление, автоусиление) не нужна и заметно грузит CPU;
-            // автоусиление к тому же выравнивает громкость и ломает порог срабатывания
-            const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-            if (settings.deviceId) audio.deviceId = { exact: settings.deviceId };
-            stream = await navigator.mediaDevices.getUserMedia({ audio });
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 1024;
-            audioCtx.createMediaStreamSource(stream).connect(analyser);
-            buffer = new Uint8Array(analyser.fftSize);
-
-            ui.start.textContent = 'Перезапустить микрофон';
-            ui.start.disabled = false;
-            setStatus('live', 'микрофон активен');
-            listDevices();   // после разрешения доступны названия устройств
-            loop();
-        } catch (err) {
-            console.error('Ошибка доступа к микрофону:', err);
-            ui.start.disabled = false;
+        const res = await api.start_audio(settings.deviceId || '');
+        ui.start.disabled = false;
+        if (!res.ok) {
+            micOn = false;
             ui.start.textContent = 'Включить микрофон';
-            setStatus('', err && err.name === 'NotAllowedError' ? 'нет доступа' : 'ошибка микрофона');
-            toast(err && err.name === 'NotAllowedError' ? 'Разрешите доступ к микрофону' : 'Не удалось открыть микрофон');
+            setStatus('', 'ошибка микрофона');
+            return toast('Не удалось открыть микрофон');
         }
+        micOn = true;
+        syncAudioParams();
+        ui.start.textContent = 'Перезапустить микрофон';
+        setStatus('live', 'микрофон активен');
     }
 
-    function loop() {
-        rafId = requestAnimationFrame(loop);
-        analyser.getByteTimeDomainData(buffer);
+    // Порог, сглаживание и задержка считаются в Python; сюда приходят только смены состояния
+    window.__micState = (speaking) => {
+        if (speaking === isSpeaking) return;
+        isSpeaking = speaking;
+        updateAvatar();
+    };
+    window.__micMeter = (width) => { ui.fill.style.width = width + '%'; };
 
-        // RMS по временной области — ровнее, чем среднее по спектру
-        let sum = 0;
-        for (let i = 0; i < buffer.length; i++) {
-            const v = (buffer[i] - 128) / 128;
-            sum += v * v;
-        }
-        const raw = Math.min(100, Math.sqrt(sum / buffer.length) * 400);
-        level += (raw - level) * (raw > level ? 0.6 : 0.2);   // быстрая атака, плавный спад
-
-        const now = performance.now();
-        if (level > settings.threshold) lastLoud = now;
-        const speaking = now - lastLoud < settings.hold;
-
-        if (speaking !== isSpeaking) {
-            isSpeaking = speaking;
-            updateAvatar();
-            if (!panel.classList.contains('hidden')) setStatus(speaking ? 'talking' : 'live', speaking ? 'говорит' : 'микрофон активен');
-        }
-        if (!panel.classList.contains('hidden')) ui.fill.style.width = Math.min(100, level * 1.5) + '%';
+    function syncAudioParams() {
+        if (!backend()) return;
+        backend().set_audio_params(settings.threshold, settings.hold);
+        backend().set_meter(!panel.classList.contains('hidden'));
     }
 
     ui.start.addEventListener('click', startAudio);
     ui.device.addEventListener('change', () => {
         settings.deviceId = ui.device.value;
         saveSettings();
-        if (stream) startAudio();
+        if (micOn) startAudio();
     });
 
     // ---------- Сцены (десктопная версия) ----------

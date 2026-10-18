@@ -56,13 +56,6 @@ body.transparent { background-color: transparent; }
     inset: 0;
     will-change: transform;
 }
-#avatar-bounce.bouncing {
-    animation: bounce 0.22s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
-}
-@keyframes bounce {
-    from { transform: translateY(0); }
-    to   { transform: translateY(-2.2vh); }
-}
 
 /* ---------- Панель настроек ---------- */
 #settings-panel {
@@ -112,10 +105,8 @@ body.transparent { background-color: transparent; }
     height: 8px;
     border-radius: 50%;
     background: #666;
-    transition: background 0.15s, box-shadow 0.15s;
 }
 .status.live i { background: #34d399; }
-.status.talking i { background: #34d399; box-shadow: 0 0 8px #34d399; }
 
 .tabs {
     display: flex;

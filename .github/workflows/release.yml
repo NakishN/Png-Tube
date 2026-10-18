@@ -32,36 +32,33 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller qtpy
 
-      - name: Build Executable (Windows)
+      - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --noconfirm --onefile --windowed --add-data "web;web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
-          Move-Item -Path dist\main.exe -Destination dist\PNGTuber-Windows.exe
+          pyinstaller --noconfirm --onedir --windowed --name PNGTuber --add-data "web;web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import sounddevice --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          Compress-Archive -Path dist\PNGTuber -DestinationPath dist\PNGTuber-Windows.zip
 
-      - name: Build Executable (Linux)
+      - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           # Install dependencies required for PyQt6
           sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 libopengl0
-          pyinstaller --noconfirm --onefile --windowed --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
-          mv dist/main dist/PNGTuber-Linux
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 libopengl0 libportaudio2
+          pyinstaller --noconfirm --onedir --windowed --name PNGTuber --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import sounddevice --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          cd dist && zip -r PNGTuber-Linux.zip PNGTuber
 
-      - name: Build Executable (macOS)
+      - name: Build (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --noconfirm --onefile --windowed --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
-          mv dist/main dist/PNGTuber-macOS
+          pyinstaller --noconfirm --onedir --windowed --name PNGTuber --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import sounddevice --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          cd dist && ditto -c -k --keepParent PNGTuber.app PNGTuber-macOS.zip
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Executables-${{ matrix.os }}
-          path: |
-            dist/PNGTuber-Windows.exe
-            dist/PNGTuber-Linux
-            dist/PNGTuber-macOS
-          if-no-files-found: ignore
+          path: dist/PNGTuber-*.zip
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
@@ -79,20 +76,22 @@ jobs:
           path: dist
 
 
+      - name: Pick release tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"; else echo "TAG=latest" >> "$GITHUB_ENV"; fi
+
       - name: Delete existing release (if any)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete v1.0.0 -y --cleanup-tag || true
+        run: gh release delete "$TAG" -y --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/**/*.exe
-            dist/**/PNGTuber-Linux
-            dist/**/PNGTuber-macOS
-          tag_name: "v1.0.0"
-          name: "PNGTuber 1.0.0"
-          body: "Легкий PNGTuber (Cross-platform Python/PyQt6)"
+          files: dist/**/PNGTuber-*.zip
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: "PNGTuber ${{ env.TAG }}"
+          body: "Лёгкий PNGTuber (Python/PyQt6). Распакуйте архив целиком и запустите PNGTuber."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
