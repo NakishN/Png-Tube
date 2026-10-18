@@ -116,11 +116,9 @@
             thumb.hidden = false;
             slotEls[slot].classList.add('filled');
         } else {
-            // сброс: возвращаемся к встроенным idle.png / speaking.png, у остальных — пусто
-            const builtin = slot === 'idle' || slot === 'speaking';
-            if (builtin) imgs[slot].src = thumb.src = slot + '.png';
-            else { imgs[slot].removeAttribute('src'); thumb.removeAttribute('src'); }
-            thumb.hidden = !builtin;
+            imgs[slot].removeAttribute('src');
+            thumb.removeAttribute('src');
+            thumb.hidden = true;
             slotEls[slot].classList.remove('filled');
         }
         if (persist && backend()) backend().set_image(slot, dataURLs[slot]);
@@ -134,10 +132,18 @@
         reader.readAsDataURL(file);
     }
 
+    async function pickImage(slot) {
+        if (!backend()) return toast('Выбор файла доступен только в десктопной версии');
+        const src = await backend().pick_image();
+        if (src) setSlotImage(slot, src);
+    }
+
     for (const slot of SLOTS) {
         const el = slotEls[slot];
-        const input = el.querySelector('input');
-        input.addEventListener('change', () => { readFile(slot, input.files[0]); input.value = ''; });
+        el.addEventListener('click', () => pickImage(slot));
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickImage(slot); }
+        });
         el.querySelector('.clear').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();

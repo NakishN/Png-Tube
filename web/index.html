@@ -10,8 +10,8 @@
 
     <div id="avatar-container">
         <div id="avatar-bounce">
-            <img id="idle-img" class="avatar-img active" src="idle.png" alt="">
-            <img id="speaking-img" class="avatar-img" src="speaking.png" alt="">
+            <img id="idle-img" class="avatar-img active" alt="">
+            <img id="speaking-img" class="avatar-img" alt="">
             <img id="idle_blink-img" class="avatar-img" alt="">
             <img id="speaking_blink-img" class="avatar-img" alt="">
         </div>
@@ -31,10 +31,10 @@
 
         <section id="tab-images" class="tab-content active">
             <div class="slots">
-                <label class="slot" data-slot="idle"><img hidden alt=""><span>Молчит</span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
-                <label class="slot" data-slot="speaking"><img hidden alt=""><span>Говорит</span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
-                <label class="slot" data-slot="idle_blink"><img hidden alt=""><span>Моргает <span class="opt">(молчит)</span></span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
-                <label class="slot" data-slot="speaking_blink"><img hidden alt=""><span>Моргает <span class="opt">(говорит)</span></span><button class="clear" title="Сбросить">×</button><input type="file" accept="image/*"></label>
+                <div class="slot" role="button" tabindex="0" data-slot="idle"><img hidden alt=""><span>Молчит</span><button class="clear" title="Сбросить">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="speaking"><img hidden alt=""><span>Говорит</span><button class="clear" title="Сбросить">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="idle_blink"><img hidden alt=""><span>Моргает <span class="opt">(молчит)</span></span><button class="clear" title="Сбросить">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="speaking_blink"><img hidden alt=""><span>Моргает <span class="opt">(говорит)</span></span><button class="clear" title="Сбросить">×</button></div>
             </div>
             <p class="footer" style="border:0;padding-top:10px;margin-top:6px;display:block;line-height:1.5">
                 Нажмите на слот или перетащите PNG прямо на него. Картинки моргания необязательны.

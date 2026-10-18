@@ -1,6 +1,7 @@
 import argparse
 import base64
 import json
+import mimetypes
 import os
 import sys
 import zipfile
@@ -11,6 +12,7 @@ import webview
 APP_NAME = 'PNGTuber'
 SLOTS = ('idle', 'speaking', 'idle_blink', 'speaking_blink')
 SCENE_FILTER = ('Сцена PNGTuber (*.pngtuber)', 'Все файлы (*.*)')
+IMAGE_FILTER = ('Изображения (*.png;*.jpg;*.jpeg;*.gif;*.webp)', 'Все файлы (*.*)')
 
 
 def get_web_dir():
@@ -38,8 +40,8 @@ def decode_data_url(data_url):
         return None
 
 
-def encode_data_url(data):
-    return 'data:image/png;base64,' + base64.b64encode(data).decode('ascii')
+def encode_data_url(data, mime='image/png'):
+    return f'data:{mime};base64,' + base64.b64encode(data).decode('ascii')
 
 
 def first_path(result):
@@ -97,6 +99,21 @@ class Api:
                 path.unlink(missing_ok=True)
         except OSError as e:
             print('Не удалось сохранить изображение:', e)
+
+    def pick_image(self):
+        """Нативный диалог выбора картинки; <input type=file> в Qt WebEngine на Windows не открывается."""
+        path = first_path(self.window.create_file_dialog(
+            webview.OPEN_DIALOG, file_types=IMAGE_FILTER))
+        if not path:
+            return None
+        try:
+            mime = mimetypes.guess_type(path)[0] or 'image/png'
+            if not mime.startswith('image/'):
+                return None
+            return encode_data_url(Path(path).read_bytes(), mime)
+        except OSError as e:
+            print('Не удалось прочитать изображение:', e)
+            return None
 
     # ---- Сцены (.pngtuber) ----
 

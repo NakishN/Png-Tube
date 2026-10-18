@@ -235,7 +235,6 @@ select option { background: #22222c; }
     display: none;
 }
 .slot.filled .clear { display: block; }
-.slot input { display: none; }
 
 #volume-meter {
     position: relative;
