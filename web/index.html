@@ -37,7 +37,7 @@
                 <div class="slot" role="button" tabindex="0" data-slot="speaking_blink"><img hidden alt=""><span>Моргает <span class="opt">(говорит)</span></span><button class="clear" title="Сбросить">×</button></div>
             </div>
             <p class="footer" style="border:0;padding-top:10px;margin-top:6px;display:block;line-height:1.5">
-                Нажмите на слот или перетащите PNG прямо на него. Картинки моргания необязательны.
+                Нажмите на слот или перетащите PNG прямо на него. Моргание необязательно.
             </p>
         </section>
 
@@ -46,33 +46,79 @@
                 <label for="device-select">Микрофон</label>
                 <select id="device-select"><option value="">По умолчанию</option></select>
             </div>
+
+            <!-- Живая шкала громкости -->
             <div class="row">
-                <div class="row-label">Порог срабатывания <b id="threshold-value">15</b></div>
-                <input type="range" id="threshold-slider" min="1" max="80" value="15">
+                <div class="row-label">Уровень звука <span class="meter-hint">● зеленый — открытие, ● оранжевый — закрытие</span></div>
+                <div id="volume-meter">
+                    <div id="volume-fill"></div>
+                    <div id="threshold-close-mark" title="Порог закрытия"></div>
+                    <div id="threshold-open-mark" title="Порог открытия"></div>
+                </div>
             </div>
+
+            <!-- Основные параметры (простые и понятные) -->
+            <div class="row">
+                <div class="row-label">Чувствительность (порог) <b id="threshold-open-value">18</b></div>
+                <input type="range" id="threshold-open-slider" min="1" max="90" step="1" value="18">
+            </div>
+
             <div class="row">
                 <div class="row-label">Задержка закрытия рта <b id="hold-value">150 мс</b></div>
-                <input type="range" id="hold-slider" min="0" max="600" step="25" value="150">
+                <input type="range" id="hold-slider" min="0" max="600" step="1" value="150">
             </div>
-            <div class="row">
-                <div class="row-label">Уровень</div>
-                <div id="volume-meter"><div id="volume-fill"></div><div id="threshold-mark"></div></div>
-            </div>
-            <button id="start-btn" class="btn primary">Включить микрофон</button>
+
+            <!-- Спойлер дополнительных настроек для профи -->
+            <details class="advanced-box" id="audio-advanced">
+                <summary>⚙ Дополнительные настройки</summary>
+                <div class="advanced-content">
+                    <div class="row">
+                        <div class="row-label">Усиление звука <b id="gain-value">100%</b></div>
+                        <input type="range" id="gain-slider" min="100" max="500" step="10" value="100">
+                    </div>
+                    <div class="row">
+                        <div class="row-label">Порог закрытия рта вручную <b id="threshold-close-value">10</b></div>
+                        <input type="range" id="threshold-close-slider" min="1" max="90" step="1" value="10">
+                    </div>
+                    <div class="row">
+                        <div class="row-label">Фильтр щелчков (атака) <b id="attack-value">0 мс</b></div>
+                        <input type="range" id="attack-slider" min="0" max="100" step="1" value="0">
+                    </div>
+                </div>
+            </details>
+
+            <button id="start-btn" class="btn primary" style="margin-top:12px">Включить микрофон</button>
         </section>
 
         <section id="tab-display" class="tab-content">
             <div class="row">
-                <label for="bg-color-picker">Цвет фона (для хромакея)</label>
-                <input type="color" id="bg-color-picker" value="#00ff00">
+                <label for="bg-color-picker">Цвет фона (хромакей)</label>
+                <div class="color-row">
+                    <input type="color" id="bg-color-picker" value="#00ff00">
+                    <div class="color-presets">
+                        <button type="button" class="preset-dot" style="background:#00ff00" data-color="#00ff00" title="Зеленый"></button>
+                        <button type="button" class="preset-dot" style="background:#0000ff" data-color="#0000ff" title="Синий"></button>
+                        <button type="button" class="preset-dot" style="background:#ff00ff" data-color="#ff00ff" title="Маджента"></button>
+                        <button type="button" class="preset-dot" style="background:#000000" data-color="#000000" title="Черный"></button>
+                        <button type="button" class="preset-dot" style="background:#ffffff" data-color="#ffffff" title="Белый"></button>
+                    </div>
+                </div>
             </div>
+
             <div class="row">
                 <div class="row-label">Размер аватара <b id="scale-value">100%</b></div>
                 <input type="range" id="scale-slider" min="30" max="100" value="100">
             </div>
-            <label class="check"><input type="checkbox" id="animation-toggle" checked> Подпрыгивание при разговоре</label>
-            <label class="check"><input type="checkbox" id="blink-toggle" checked> Автоматическое моргание</label>
-            <label class="check"><input type="checkbox" id="flip-toggle"> Отразить по горизонтали</label>
+
+            <div class="checks-group">
+                <label class="check"><input type="checkbox" id="animation-toggle" checked> Подпрыгивание при речи</label>
+                <label class="check"><input type="checkbox" id="blink-toggle" checked> Авто-моргание</label>
+                <label class="check"><input type="checkbox" id="flip-toggle"> Отразить зеркально</label>
+                <label class="check"><input type="checkbox" id="obs-bg-toggle" checked> Не засыпать при сворачивании (для OBS)</label>
+                <label class="check"><input type="checkbox" id="on-top-toggle"> Поверх всех окон</label>
+            </div>
+
+            <button type="button" id="park-btn" class="btn secondary" style="margin-top:10px">Скрыть окно в фон (для OBS)</button>
         </section>
 
         <div class="btn-row">
@@ -80,7 +126,7 @@
             <button id="load-scene-btn" class="btn">Загрузить сцену</button>
         </div>
         <div class="footer">
-            <span><kbd>S</kbd> — показать / скрыть</span>
+            <span><kbd>S</kbd> — панель настроек</span>
             <button class="link" id="hide-settings-btn">Скрыть</button>
         </div>
     </aside>

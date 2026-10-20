@@ -3,21 +3,24 @@
 
     const $ = (id) => document.getElementById(id);
     const SLOTS = ['idle', 'speaking', 'idle_blink', 'speaking_blink'];
-    const STORAGE_KEY = 'pngtuber_settings_v2';   // запасной вариант, если страница открыта без десктопной оболочки
+    const STORAGE_KEY = 'pngtuber_settings_v3';   // запасной вариант, если страница открыта без десктопной оболочки
     const DEFAULTS = {
-        threshold: 15,
+        thresholdOpen: 18,
+        thresholdClose: 10,
         hold: 150,
+        attack: 0,
+        gain: 100,
         bgColor: '#00ff00',
         scale: 100,
         enableAnim: true,
         enableBlink: true,
         flip: false,
+        onTop: false,
+        obsBackground: true,
         deviceId: ''
     };
 
     // ---------- Связь с десктопной оболочкой ----------
-    // Настройки и картинки хранит Python (конфиг-каталог пользователя): у встроенного
-    // HTTP-сервера порт каждый раз новый, так что localStorage между запусками не живёт.
     const backend = () => (window.pywebview && window.pywebview.api) || null;
 
     async function whenBackendReady() {
@@ -51,13 +54,17 @@
     const dataURLs = Object.fromEntries(SLOTS.map(s => [s, '']));  // пользовательские изображения (для сохранения сцены)
 
     const ui = {
-        threshold: $('threshold-slider'), thresholdValue: $('threshold-value'),
+        gain: $('gain-slider'), gainValue: $('gain-value'),
+        thresholdOpen: $('threshold-open-slider'), thresholdOpenValue: $('threshold-open-value'),
+        thresholdClose: $('threshold-close-slider'), thresholdCloseValue: $('threshold-close-value'),
         hold: $('hold-slider'), holdValue: $('hold-value'),
+        attack: $('attack-slider'), attackValue: $('attack-value'),
         scale: $('scale-slider'), scaleValue: $('scale-value'),
         bg: $('bg-color-picker'),
         anim: $('animation-toggle'), blink: $('blink-toggle'), flip: $('flip-toggle'),
+        onTop: $('on-top-toggle'), obsBg: $('obs-bg-toggle'), parkBtn: $('park-btn'),
         device: $('device-select'), start: $('start-btn'),
-        fill: $('volume-fill'), mark: $('threshold-mark'),
+        fill: $('volume-fill'), markOpen: $('threshold-open-mark'), markClose: $('threshold-close-mark'),
         status: $('status'), statusText: $('status-text')
     };
 
@@ -76,9 +83,9 @@
 
     const loaded = (img) => img.complete && img.naturalWidth > 0;
 
-    let shown = imgs.idle;  // что сейчас показано: лишние перекраски копят память в Chromium
+    let shown = imgs.idle;
     let bouncing = false;
-    // Одна анимация на всё время работы: пересоздание CSS-анимации при каждой фразе копит память
+    // Одна анимация на всё время работы: пересоздание CSS-анимации при каждой фразе копит память в Chromium
     const bounceAnim = bounce.animate(
         [{ transform: 'translateY(0)' }, { transform: 'translateY(-2.2vh)' }],
         { duration: 220, iterations: Infinity, direction: 'alternate', easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }
@@ -178,25 +185,37 @@
 
     // ---------- Применение настроек к интерфейсу ----------
     function applySettings() {
-        ui.threshold.value = settings.threshold;
-        ui.thresholdValue.textContent = settings.threshold;
-        ui.mark.style.left = Math.min(100, settings.threshold * 1.5) + '%';
+        ui.gain.value = settings.gain;
+        ui.gainValue.textContent = settings.gain === 100 ? '100% (норма)' : settings.gain + '% (x' + (settings.gain / 100).toFixed(1) + ')';
+        ui.thresholdOpen.value = settings.thresholdOpen;
+        ui.thresholdOpenValue.textContent = settings.thresholdOpen;
+        ui.thresholdClose.value = settings.thresholdClose;
+        ui.thresholdCloseValue.textContent = settings.thresholdClose;
         ui.hold.value = settings.hold;
-        ui.holdValue.textContent = settings.hold + ' мс';
+        ui.holdValue.textContent = settings.hold === 0 ? '0 мс (без задержки)' : settings.hold + ' мс';
+        ui.attack.value = settings.attack;
+        ui.attackValue.textContent = settings.attack === 0 ? '0 мс (выкл)' : settings.attack + ' мс';
+
+        ui.markOpen.style.left = Math.min(100, settings.thresholdOpen * 1.5) + '%';
+        ui.markClose.style.left = Math.min(100, settings.thresholdClose * 1.5) + '%';
+
         ui.scale.value = settings.scale;
         ui.scaleValue.textContent = settings.scale + '%';
         ui.bg.value = settings.bgColor;
         ui.anim.checked = settings.enableAnim;
         ui.blink.checked = settings.enableBlink;
         ui.flip.checked = settings.flip;
+        ui.onTop.checked = Boolean(settings.onTop);
+        ui.obsBg.checked = Boolean(settings.obsBackground);
 
         document.documentElement.style.setProperty('--bg-color', settings.bgColor);
         document.documentElement.style.setProperty('--avatar-scale', settings.scale / 100);
         document.body.classList.toggle('transparent', options.transparent);
-        // transform на контейнере конфликтует с анимацией прыжка — отражаем сами изображения
+
         for (const img of Object.values(imgs)) img.style.transform = settings.flip ? 'scaleX(-1)' : '';
         updateAvatar();
         syncAudioParams();
+        syncWindowParams();
     }
 
     const bind = (el, event, key, parse) => el.addEventListener(event, () => {
@@ -204,13 +223,49 @@
         saveSettings();
         applySettings();
     });
-    bind(ui.threshold, 'input', 'threshold', e => Number(e.value));
+
+    let manualClose = false;
+    bind(ui.gain, 'input', 'gain', e => Number(e.value));
+    ui.thresholdOpen.addEventListener('input', () => {
+        settings.thresholdOpen = Number(ui.thresholdOpen.value);
+        if (!manualClose) {
+            settings.thresholdClose = Math.max(1, Math.round(settings.thresholdOpen * 0.6));
+        } else if (settings.thresholdClose > settings.thresholdOpen) {
+            settings.thresholdClose = settings.thresholdOpen;
+        }
+        saveSettings();
+        applySettings();
+    });
+    ui.thresholdClose.addEventListener('input', () => {
+        manualClose = true;
+        settings.thresholdClose = Number(ui.thresholdClose.value);
+        if (settings.thresholdClose > settings.thresholdOpen) {
+            settings.thresholdOpen = settings.thresholdClose;
+        }
+        saveSettings();
+        applySettings();
+    });
     bind(ui.hold, 'input', 'hold', e => Number(e.value));
+    bind(ui.attack, 'input', 'attack', e => Number(e.value));
     bind(ui.scale, 'input', 'scale', e => Number(e.value));
     bind(ui.bg, 'input', 'bgColor', e => e.value);
     bind(ui.anim, 'change', 'enableAnim', e => e.checked);
     bind(ui.blink, 'change', 'enableBlink', e => e.checked);
     bind(ui.flip, 'change', 'flip', e => e.checked);
+    bind(ui.onTop, 'change', 'onTop', e => e.checked);
+    bind(ui.obsBg, 'change', 'obsBackground', e => e.checked);
+
+    // Пресеты хромакея
+    document.querySelectorAll('.preset-dot').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const col = btn.dataset.color;
+            if (col) {
+                settings.bgColor = col;
+                saveSettings();
+                applySettings();
+            }
+        });
+    });
 
     // ---------- Вкладки и панель ----------
     document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
@@ -226,9 +281,15 @@
         if (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы') togglePanel();
     });
 
+    // Кнопка парковки в фон для OBS
+    ui.parkBtn.addEventListener('click', async () => {
+        const api = backend();
+        if (!api || !api.park_window) return toast('Парковка доступна только в приложении');
+        await api.park_window();
+        toast('Окно скрыто в фон для OBS. Нажмите S или кликните по иконке в панели задач для возврата');
+    });
+
     // ---------- Звук ----------
-    // Микрофон читает Python (PortAudio) и присылает уровень сюда: браузерный getUserMedia
-    // потребовал бы разрешения у системы при каждом запуске
     let micOn = false;
 
     function setStatus(state, text) {
@@ -274,7 +335,6 @@
         setStatus('live', 'микрофон активен');
     }
 
-    // Порог, сглаживание и задержка считаются в Python; сюда приходят только смены состояния
     window.__micState = (speaking) => {
         if (speaking === isSpeaking) return;
         isSpeaking = speaking;
@@ -283,9 +343,23 @@
     window.__micMeter = (width) => { ui.fill.style.width = width + '%'; };
 
     function syncAudioParams() {
-        if (!backend()) return;
-        backend().set_audio_params(settings.threshold, settings.hold);
-        backend().set_meter(!panel.classList.contains('hidden'));
+        const api = backend();
+        if (!api) return;
+        api.set_audio_params(
+            settings.thresholdOpen,
+            settings.thresholdClose,
+            settings.hold,
+            settings.attack,
+            settings.gain
+        );
+        api.set_meter(!panel.classList.contains('hidden'));
+    }
+
+    function syncWindowParams() {
+        const api = backend();
+        if (!api) return;
+        if (api.set_always_on_top) api.set_always_on_top(settings.onTop);
+        if (api.set_obs_background) api.set_obs_background(settings.obsBackground);
     }
 
     ui.start.addEventListener('click', startAudio);
@@ -295,12 +369,12 @@
         if (micOn) startAudio();
     });
 
-    // ---------- Сцены (десктопная версия) ----------
+    // ---------- Сцены (.pngtuber) ----------
     $('save-scene-btn').addEventListener('click', async () => {
         if (!backend()) return toast('Сохранение доступно только в десктопной версии');
-        const { threshold, hold, bgColor, scale, enableAnim, enableBlink, flip } = settings;
+        const { thresholdOpen, thresholdClose, hold, attack, gain, bgColor, scale, enableAnim, enableBlink, flip } = settings;
         const ok = await backend().save_scene(
-            JSON.stringify({ threshold, hold, bgColor, scale, enableAnim, enableBlink, flip }),
+            JSON.stringify({ thresholdOpen, thresholdClose, hold, attack, gain, bgColor, scale, enableAnim, enableBlink, flip }),
             dataURLs.idle, dataURLs.speaking, dataURLs.idle_blink, dataURLs.speaking_blink
         );
         toast(ok ? 'Сцена сохранена' : 'Сохранение отменено');
@@ -313,6 +387,11 @@
         if (scene.config) {
             for (const key of Object.keys(DEFAULTS)) {
                 if (key !== 'deviceId' && key in scene.config) settings[key] = scene.config[key];
+            }
+            // Обратная совместимость для старых сцен со свойством threshold
+            if ('threshold' in scene.config && !('thresholdOpen' in scene.config)) {
+                settings.thresholdOpen = scene.config.threshold;
+                settings.thresholdClose = Math.max(1, scene.config.threshold - 6);
             }
             saveSettings();
             applySettings();
@@ -335,7 +414,6 @@
         }
         applySettings();
         listDevices();
-        // Автозапуск (в OBS и при уже выданном разрешении интерфейс не требуется)
         startAudio();
     }
     init();
