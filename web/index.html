@@ -8,6 +8,21 @@
 </head>
 <body>
 
+    <!-- Загрузочный экран: окно отзывается сразу, а не выглядит «зависшим» -->
+    <div id="splash" role="status" aria-live="polite">
+        <div class="splash-logo">PNGTuber</div>
+        <div class="splash-bar"><i></i></div>
+        <div class="splash-hint">Загрузка модели…</div>
+    </div>
+
+    <!-- Если старт всё-таки сорвался, лучше показать причину, чем молча висеть -->
+    <div id="fatal" hidden>
+        <div class="fatal-title">Не удалось запустить PNGTuber</div>
+        <div class="fatal-text" id="fatal-text"></div>
+        <div class="fatal-hint" id="fatal-hint"></div>
+        <button class="btn" onclick="location.reload()">Попробовать снова</button>
+    </div>
+
     <div id="avatar-container">
         <div id="avatar-bounce">
             <img id="idle-img" class="avatar-img active" alt="">

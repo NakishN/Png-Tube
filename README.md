@@ -38,6 +38,18 @@ python main.py
 
 На Linux для микрофона нужна системная библиотека PortAudio (`sudo apt install libportaudio2`).
 
+## Диагностика
+
+- Лог приложения: `%APPDATA%\PNGTuber\pngtuber.log` (Windows), `~/.config/PNGTuber/pngtuber.log` (Linux), `~/Library/Application Support/PNGTuber/pngtuber.log` (macOS). Рядом `crash.log` — падения в нативном коде (Qt / WebView2 / PortAudio).
+- Второй запуск не создаёт второй процесс: он находит уже работающее окно, показывает его и завершается сам. Если окно не отвечает, приложение скажет об этом в логе.
+- Настройки, картинки и сцены пишутся атомарно (через временный файл), поэтому закрытие через Диспетчер задач больше не оставляет «половинчатые» `settings.json` и PNG.
+- Импортированные картинки автоматически уменьшаются до 1200 px по длинной стороне и пересохраняются в PNG: это в разы снижает расход памяти и размер `settings`/сцены.
+
+## Известные ограничения
+
+- Анимированные GIF/WebP в слотах сохраняются первым кадром: PNGTuber работает с четырьмя статичными состояниями.
+- На Windows используется WebView2 (Edge), на Linux — Qt WebEngine, поэтому флаги Chromium задаются по-разному (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` и `QTWEBENGINE_CHROMIUM_FLAGS`).
+
 ## Структура
 
 ```
