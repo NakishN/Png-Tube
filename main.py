@@ -1,6 +1,7 @@
 import argparse
 import base64
 import faulthandler
+import importlib
 import json
 import logging
 import logging.handlers
@@ -163,18 +164,30 @@ def atomic_write_text(path, text):
 # ---------------------------------------------------------------------------
 
 _qt_api = None
+_QT_BINDINGS = ('qtpy', 'PyQt6', 'PySide6')
 
 
 def qt_image_api():
-    """Ленивый импорт Qt: нужен только для картинок, не для логики."""
+    """Ленивый импорт Qt: нужен только для картинок, не для логики.
+
+    Идём по списку биндингов, потому что в собранном PyInstaller-ом приложении
+    qtpy может не оказаться (импорт внутри функции не виден анализатору),
+    а PyQt6 там есть всегда.
+    """
     global _qt_api
     if _qt_api is None:
-        try:
-            from qtpy.QtCore import QBuffer, QByteArray, QIODevice, Qt
-            from qtpy.QtGui import QImage, QImageReader
-            _qt_api = (QBuffer, QByteArray, QIODevice, Qt, QImage, QImageReader)
-        except Exception as e:               # без Qt приложение всё равно должно работать
-            log.warning('Qt недоступен, картинки не будут уменьшаться: %s', e)
+        for binding in _QT_BINDINGS:
+            try:
+                core = importlib.import_module(f'{binding}.QtCore')
+                gui = importlib.import_module(f'{binding}.QtGui')
+                _qt_api = (core.QBuffer, core.QByteArray, core.QIODevice,
+                           core.Qt, gui.QImage, gui.QImageReader)
+                log.info('Обработка картинок через %s', binding)
+                break
+            except Exception as e:
+                log.debug('%s недоступен: %s', binding, e)
+        else:
+            log.warning('PyQt/PySide не найден — картинки не будут уменьшаться')
             _qt_api = False
     return _qt_api or None
 
