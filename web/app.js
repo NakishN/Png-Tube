@@ -4,7 +4,8 @@
     const $ = (id) => document.getElementById(id);
     const SLOTS = ['idle', 'speaking', 'idle_blink', 'speaking_blink'];
     const STORAGE_KEY = 'pngtuber_settings_v3';   // запасной вариант, если страница открыта без десктопной оболочки
-    const MAX_SIDE = 1400;                       // предварительное уменьшение при drag&drop
+    const MAX_SIDE = 1000;                       // совпадает с MAX_IMAGE_SIDE в Python
+    const MAX_FILE_BYTES = 64 * 1024 * 1024;     // не декодируем файлы-гиганты
     const DEFAULTS = {
         thresholdOpen: 18,
         thresholdClose: 10,
@@ -63,6 +64,15 @@
         if (promise && typeof promise.catch === 'function') promise.catch(() => {});
     }
 
+    function reportClientError(message, stack) {
+        try {
+            const api = backend();
+            if (api && typeof api.log_client_error === 'function') {
+                safe(api.log_client_error(String(message || ''), String(stack || '')));
+            }
+        } catch (_) {}
+    }
+
     // ---------- Настройки ----------
 
     const clampInt = (value, lo, hi, fallback) => {
@@ -79,7 +89,7 @@
         out.thresholdClose = Math.min(out.thresholdClose, out.thresholdOpen);
         out.hold = clampInt(out.hold, 0, 600, DEFAULTS.hold);
         out.attack = clampInt(out.attack, 0, 100, DEFAULTS.attack);
-        out.gain = clampInt(out.gain, 100, 500, DEFAULTS.gain);
+        out.gain = clampInt(out.gain, 10, 500, DEFAULTS.gain);
         out.scale = clampInt(out.scale, 30, 100, DEFAULTS.scale);
         if (typeof out.bgColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(out.bgColor)) {
             out.bgColor = DEFAULTS.bgColor;
@@ -95,14 +105,22 @@
     let options = { transparent: false };
 
     let saveTimer;
+    function flushSettings() {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+        const api = backend();
+        if (api) safe(api.save_settings(JSON.stringify(settings)));
+        else try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (_) {}
+    }
     function saveSettings() {
         clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => {
-            const api = backend();
-            if (api) safe(api.save_settings(JSON.stringify(settings)));
-            else try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (_) {}
-        }, 300);
+        saveTimer = setTimeout(flushSettings, 300);
     }
+    // Не теряем последнее движение слайдера при закрытии окна.
+    window.addEventListener('beforeunload', flushSettings);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) flushSettings();
+    });
 
     // ---------- Элементы ----------
 
@@ -111,6 +129,8 @@
     const imgs = Object.fromEntries(SLOTS.map(s => [s, $(s + '-img')]));
     const slotEls = Object.fromEntries(SLOTS.map(s => [s, document.querySelector(`.slot[data-slot="${s}"]`)]));
     const imageTokens = Object.fromEntries(SLOTS.map(s => [s, 0]));
+    const saveSeq = Object.fromEntries(SLOTS.map(s => [s, 0]));
+    const saveChains = Object.fromEntries(SLOTS.map(s => [s, Promise.resolve()]));
     const pendingImageSaves = new Set();
 
     const ui = {
@@ -123,7 +143,8 @@
         bg: $('bg-color-picker'),
         anim: $('animation-toggle'), blink: $('blink-toggle'), flip: $('flip-toggle'),
         onTop: $('on-top-toggle'), obsBg: $('obs-bg-toggle'), parkBtn: $('park-btn'),
-        device: $('device-select'), start: $('start-btn'),
+        device: $('device-select'), start: $('start-btn'), stop: $('stop-btn'),
+        refresh: $('refresh-devices'),
         fill: $('volume-fill'), markOpen: $('threshold-open-mark'), markClose: $('threshold-close-mark'),
         status: $('status'), statusText: $('status-text')
     };
@@ -185,9 +206,12 @@
         }
         if (target !== shown) {
             if (shown) shown.classList.remove('active');
-            target.classList.add('active');
             shown = target;
         }
+        // Добавляем active даже если target === shown: после очистки слота
+        // класс снимается, и повторная загрузка той же картинки иначе
+        // оставалась невидимой (visibility: hidden).
+        target.classList.add('active');
         const wantBounce = settings.enableAnim && isSpeaking;
         if (wantBounce !== bouncing) {
             bouncing = wantBounce;
@@ -218,15 +242,17 @@
 
     // ---------- Изображения ----------
 
-    function applySlot(slot, src) {
+    function applySlot(slot, src, thumbSrc) {
         const img = imgs[slot];
         const thumb = slotEls[slot].querySelector('img');
         if (src) {
+            const thumbValue = thumbSrc || src;
             if (img.getAttribute('src') !== src) img.src = src;
-            if (thumb.getAttribute('src') !== src) thumb.src = src;
+            if (thumb.getAttribute('src') !== thumbValue) thumb.src = thumbValue;
             thumb.hidden = false;
             slotEls[slot].classList.add('filled');
         } else {
+            if (shown === img) shown = null;
             img.classList.remove('active');
             img.removeAttribute('src');      // сначала освобождаем декодированный битмап
             thumb.removeAttribute('src');
@@ -240,26 +266,35 @@
      * @param {string} src  data URL картинки ('' — очистить слот)
      * @param {{persist?: boolean}} opts  persist=false, если Python уже сохранил файл
      */
-    function setSlotImage(slot, src, { persist = true } = {}) {
+    function setSlotImage(slot, src, { persist = true, thumb = '' } = {}) {
         const token = ++imageTokens[slot];
-        applySlot(slot, src || '');
+        applySlot(slot, src || '', thumb || '');
         if (!persist) return Promise.resolve();
 
         const api = backend();
         if (!api) return Promise.resolve();
 
+        // Записи одного слота идут строго по очереди. Иначе быстрый drop
+        // второй картинки мог завершиться раньше первой, и на диске
+        // оказывался не тот файл, который видит пользователь.
+        const seq = ++saveSeq[slot];
         const task = (async () => {
+            await saveChains[slot].catch(() => {});
+            if (seq !== saveSeq[slot] || token !== imageTokens[slot]) return;
             try {
                 // Python возвращает уже уменьшенный PNG — показываем именно его,
                 // иначе в памяти остаётся исходная картинка на 30 МБ.
-                const res = await withTimeout(api.set_image(slot, src || ''), 20000, 'картинка');
+                const res = await withTimeout(api.set_image(slot, src || ''), 120000, 'картинка');
                 if (token !== imageTokens[slot]) return;     // пользователь уже выбрал другую
                 if (res && res.ok === false) { toast(res.error || 'Не удалось сохранить картинку'); return; }
-                if (res && typeof res.url === 'string' && res.url !== src) applySlot(slot, res.url);
+                if (res && typeof res.url === 'string' && res.url !== src) {
+                    applySlot(slot, res.url, res.thumb || '');
+                }
             } catch (e) {
                 if (token === imageTokens[slot]) toast('Картинка: ' + e.message);
             }
         })();
+        saveChains[slot] = task.catch(() => {});
         pendingImageSaves.add(task);
         task.finally(() => pendingImageSaves.delete(task));
         return task;
@@ -293,7 +328,9 @@
 
     async function readFile(slot, file) {
         if (!file) return;
-        if (!file.type.startsWith('image/')) return toast('Нужен файл изображения');
+        const imageExt = /\.(png|jpe?g|gif|webp)$/i.test(file.name || '');
+        if (!file.type.startsWith('image/') && !imageExt) return toast('Нужен файл изображения');
+        if (file.size > MAX_FILE_BYTES) return toast('Файл слишком большой (больше 64 МБ)');
         try {
             // Уменьшаем ДО отправки в Python: огромный PNG не должен идти через мост.
             const src = await fileToPngDataUrl(file);
@@ -307,10 +344,13 @@
     async function pickImage(slot) {
         if (!backend()) return toast('Выбор файла доступен только в десктопной версии');
         try {
-            const res = await apiCall('pick_image', 120000, slot);
+            // Диалог может быть открыт сколько угодно долго: таймаут здесь
+            // приводил к тому, что Python сохранял картинку, а UI её терял.
+            const res = await apiCall('pick_image', 600000, slot);
             if (!res) return;                                   // отменили
             if (res.ok === false) return toast(res.error || 'Не удалось открыть картинку');
-            setSlotImage(slot, res.url, { persist: false });     // Python уже сохранил
+            // Python уже сохранил картинку; превью приходит отдельно.
+            setSlotImage(slot, res.url, { persist: false, thumb: res.thumb || '' });
         } catch (e) {
             toast(e.message);
         }
@@ -320,6 +360,8 @@
         const el = slotEls[slot];
         el.addEventListener('click', () => pickImage(slot));
         el.addEventListener('keydown', (e) => {
+            // Не перехватываем Enter/Space у вложенной кнопки «×».
+            if (e.target.closest && e.target.closest('.clear')) return;
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickImage(slot); }
         });
         el.querySelector('.clear').addEventListener('click', (e) => {
@@ -339,7 +381,11 @@
     // ---------- Применение настроек к интерфейсу ----------
     function applySettings() {
         ui.gain.value = settings.gain;
-        ui.gainValue.textContent = settings.gain === 100 ? '100% (норма)' : settings.gain + '% (x' + (settings.gain / 100).toFixed(1) + ')';
+        ui.gainValue.textContent = settings.gain === 100
+            ? '100% (норма)'
+            : settings.gain < 100
+                ? settings.gain + '% (тише)'
+                : settings.gain + '% (x' + (settings.gain / 100).toFixed(1) + ')';
         ui.thresholdOpen.value = settings.thresholdOpen;
         ui.thresholdOpenValue.textContent = settings.thresholdOpen;
         ui.thresholdClose.value = settings.thresholdClose;
@@ -349,8 +395,9 @@
         ui.attack.value = settings.attack;
         ui.attackValue.textContent = settings.attack === 0 ? '0 мс (выкл)' : settings.attack + ' мс';
 
-        ui.markOpen.style.left = Math.min(100, settings.thresholdOpen * 1.5) + '%';
-        ui.markClose.style.left = Math.min(100, settings.thresholdClose * 1.5) + '%';
+        // 1:1 со шкалой уровня: порог 70 действительно стоит на 70%.
+        ui.markOpen.style.left = Math.min(100, settings.thresholdOpen) + '%';
+        ui.markClose.style.left = Math.min(100, settings.thresholdClose) + '%';
 
         ui.scale.value = settings.scale;
         ui.scaleValue.textContent = settings.scale + '%';
@@ -430,6 +477,8 @@
 
     const togglePanel = (hide) => {
         panel.classList.toggle('hidden', hide);
+        panel.inert = hide;
+        panel.setAttribute('aria-hidden', hide ? 'true' : 'false');
         setMeter(!hide);
     };
     $('hide-settings-btn').addEventListener('click', () => togglePanel(true));
@@ -468,9 +517,18 @@
     let lastMeter = null;
     function setMeter(on) {
         if (lastMeter === on) return;
-        lastMeter = on;
         const api = backend();
-        if (api) safe(api.set_meter(on));
+        if (!api) {
+            // Не помечаем как отправленное: backend появится позже, и
+            // applySettings() должен иметь возможность включить шкалу.
+            lastMeter = null;
+            return;
+        }
+        lastMeter = on;
+        const result = api.set_meter(on);
+        if (result && typeof result.catch === 'function') {
+            result.catch(() => { lastMeter = null; });
+        }
     }
 
     async function ensureDevices(force = false) {
@@ -478,7 +536,7 @@
         const api = backend();
         if (!api) return;
         try {
-            const res = await apiCall('get_audio_devices', 10000);
+            const res = await apiCall('get_audio_devices', 10000, force);
             const devices = (res && res.devices) || [];
             ui.device.innerHTML = '<option value="">По умолчанию</option>';
             devices.forEach(name => {
@@ -500,6 +558,17 @@
         }
     }
 
+    function updateMicUi() {
+        ui.start.disabled = micStarting;
+        ui.start.textContent = micStarting
+            ? 'Подключение…'
+            : micOn ? 'Перезапустить микрофон' : 'Включить микрофон';
+        if (ui.stop) {
+            ui.stop.hidden = !micOn || micStarting;
+            ui.stop.disabled = micStarting;
+        }
+    }
+
     async function startAudio({ quiet = false } = {}) {
         const api = backend();
         if (!api) {
@@ -509,28 +578,42 @@
         }
         if (micStarting) return;
         micStarting = true;
-        ui.start.disabled = true;
-        ui.start.textContent = 'Подключение…';
+        updateMicUi();
         setStatus('', 'ищу микрофон…');
 
         try {
-            const res = await withTimeout(api.start_audio(settings.deviceId || ''), 10000, 'микрофон');
+            const res = await withTimeout(api.start_audio(settings.deviceId || ''), 20000, 'микрофон');
             if (!res || !res.ok) throw new Error((res && res.error) || 'не удалось открыть микрофон');
             micOn = true;
             lastAudioKey = '';                 // заставим отправить параметры заново
             scheduleAudioSync(0);
-            ui.start.textContent = 'Перезапустить микрофон';
             setStatus('live', 'микрофон активен');
         } catch (e) {
             micOn = false;
-            ui.start.textContent = 'Включить микрофон';
             setStatus('', 'ошибка микрофона');
+            // Если Python всё-таки успел открыть PortAudio после таймаута,
+            // обязательно гасим поток, иначе UI говорит «выкл.», а микрофон жив.
+            safe(api.stop_audio());
             if (!quiet) toast('Микрофон: ' + e.message);
             console.warn('mic', e);
         } finally {
             micStarting = false;
-            ui.start.disabled = false;
+            updateMicUi();
         }
+    }
+
+    async function stopAudio() {
+        const api = backend();
+        if (!api) return;
+        try {
+            await withTimeout(api.stop_audio(), 5000, 'микрофон');
+        } catch (e) {
+            console.warn('mic stop', e);
+        }
+        micOn = false;
+        ui.fill.style.width = '0%';
+        setStatus('', 'микрофон выключен');
+        updateMicUi();
     }
 
     window.__micTick = (speaking, width) => {
@@ -581,6 +664,11 @@
     }
 
     ui.start.addEventListener('click', () => startAudio());
+    if (ui.stop) ui.stop.addEventListener('click', () => stopAudio());
+    if (ui.refresh) ui.refresh.addEventListener('click', async () => {
+        await ensureDevices(true);
+        toast('Список микрофонов обновлён');
+    });
     ui.device.addEventListener('change', () => {
         settings.deviceId = ui.device.value;
         saveSettings();
@@ -591,14 +679,14 @@
     $('save-scene-btn').addEventListener('click', async () => {
         if (!backend()) return toast('Сохранение доступно только в десктопной версии');
         const { thresholdOpen, thresholdClose, hold, attack, gain, bgColor, scale,
-            enableAnim, enableBlink, flip } = settings;
+            enableAnim, enableBlink, flip, onTop, obsBackground } = settings;
         try {
             // Картинки Python берёт с диска — сначала дождёмся незавершённых записей.
             await Promise.allSettled([...pendingImageSaves]);
             // Через мост идут только настройки.
-            const res = await apiCall('save_scene', 30000, JSON.stringify({
+            const res = await apiCall('save_scene', 600000, JSON.stringify({
                 thresholdOpen, thresholdClose, hold, attack, gain, bgColor, scale,
-                enableAnim, enableBlink, flip
+                enableAnim, enableBlink, flip, onTop, obsBackground
             }));
             if (!res) return toast('Сохранение отменено');
             toast(res.ok ? 'Сцена сохранена' : 'Не удалось: ' + (res.error || 'ошибка'));
@@ -609,9 +697,10 @@
 
     $('load-scene-btn').addEventListener('click', async () => {
         if (!backend()) return toast('Загрузка доступна только в десктопной версии');
+        if (!confirm('Загрузить сцену? Текущие картинки и настройки будут заменены.')) return;
         try {
             await Promise.allSettled([...pendingImageSaves]);
-            const res = await apiCall('load_scene', 60000);
+            const res = await apiCall('load_scene', 600000);
             if (!res) return toast('Загрузка отменена');
             if (!res.ok) return toast('Не удалось: ' + (res.error || 'ошибка'));
 
@@ -627,9 +716,13 @@
             applySettings();
 
             const images = res.images || {};
+            const thumbs = res.thumbs || {};
             for (const slot of SLOTS) {
-                if (images[slot]) setSlotImage(slot, images[slot], { persist: false });  // уже на диске
-                else setSlotImage(slot, '');                                            // чистим слот
+                if (images[slot]) {
+                    setSlotImage(slot, images[slot], { persist: false, thumb: thumbs[slot] || '' });
+                } else {
+                    setSlotImage(slot, '');                                             // чистим слот
+                }
             }
             toast('Сцена загружена');
         } catch (e) {
@@ -648,11 +741,14 @@
         try {
             const api = await whenBackendReady();
             if (api) {
-                const state = await withTimeout(api.get_state(), 20000, 'загрузка настроек');
+                const state = await withTimeout(api.get_state(), 60000, 'загрузка настроек');
                 settings = sanitizeSettings(state.settings);
                 options = { ...options, ...(state.options || {}) };
                 await Promise.all(SLOTS.map(slot =>
-                    setSlotImage(slot, (state.images && state.images[slot]) || '', { persist: false })));
+                    setSlotImage(slot, (state.images && state.images[slot]) || '', {
+                        persist: false,
+                        thumb: (state.thumbs && state.thumbs[slot]) || '',
+                    })));
                 backendStateLoaded = true;
             } else {
                 try { settings = sanitizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch (_) {}
@@ -660,6 +756,7 @@
             }
         } catch (e) {
             console.error(e);
+            reportClientError('init: ' + (e && e.message), e && e.stack);
             toast('Настройки не загрузились — работаю со значениями по умолчанию');
             SLOTS.forEach(slot => setSlotImage(slot, '', { persist: false }));
         } finally {
@@ -685,6 +782,14 @@
         if (!devicesLoaded) ensureDevices(true);
     });
 
-    window.addEventListener('error', (e) => console.error('JS error:', e.message));
-    window.addEventListener('unhandledrejection', (e) => console.error('JS rejection:', e.reason));
+    window.addEventListener('error', (e) => {
+        console.error('JS error:', e.message);
+        reportClientError(e.message, (e.error && e.error.stack) || e.filename + ':' + e.lineno);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+        const reason = e.reason;
+        console.error('JS rejection:', reason);
+        reportClientError('rejection: ' + (reason && reason.message || reason),
+            reason && reason.stack);
+    });
 })();

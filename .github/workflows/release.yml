@@ -9,11 +9,16 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
@@ -22,35 +27,42 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller qtpy
+          pip install "pyinstaller>=6.10,<7"
+
+      - name: Check syntax
+        run: python -m py_compile main.py
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name PNGTuber --add-data "web;web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import sounddevice --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          pyinstaller --noconfirm --clean PNGTuber.spec
           Compress-Archive -Path dist\PNGTuber -DestinationPath dist\PNGTuber-Windows.zip
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          # Install dependencies required for PyQt6
+          # Runtime-библиотеки Qt WebEngine и PortAudio.
           sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 libopengl0 libportaudio2
-          pyinstaller --noconfirm --onedir --windowed --name PNGTuber --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import sounddevice --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1 \
+            libopengl0 libportaudio2 libnss3 libxcomposite1 libxdamage1 \
+            libxrandr2 libxtst6 libgbm1
+          pyinstaller --noconfirm --clean PNGTuber.spec
           cd dist && zip -r PNGTuber-Linux.zip PNGTuber
 
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name PNGTuber --add-data "web:web" --hidden-import PyQt6 --hidden-import qtpy --hidden-import sounddevice --hidden-import PyQt6.QtWebEngineCore --hidden-import PyQt6.QtWebEngineWidgets main.py
+          pyinstaller --noconfirm --clean PNGTuber.spec
           cd dist && ditto -c -k --keepParent PNGTuber.app PNGTuber-macOS.zip
 
       - name: Upload Artifact
@@ -75,7 +87,6 @@ jobs:
         with:
           path: dist
 
-
       - name: Pick release tag
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"; else echo "TAG=latest" >> "$GITHUB_ENV"; fi
@@ -85,13 +96,29 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release delete "$TAG" -y --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
 
+      - name: Create checksums
+        run: |
+          find dist -name 'PNGTuber-*.zip' -type f -print0 \
+            | sort -z | xargs -0 sha256sum > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/PNGTuber-*.zip
+          files: |
+            dist/**/PNGTuber-*.zip
+            dist/SHA256SUMS.txt
           tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
           name: "PNGTuber ${{ env.TAG }}"
-          body: "Лёгкий PNGTuber (Python/PyQt6). Распакуйте архив целиком и запустите PNGTuber."
+          body: |
+            PNGTuber для Windows / Linux / macOS.
+
+            Windows: нужен Microsoft Edge WebView2 Runtime (есть в Windows 10/11).
+            macOS: при первом запуске разрешите доступ к микрофону;
+            при блокировке Gatekeeper выполните
+            `xattr -dr com.apple.quarantine /Applications/PNGTuber.app`.
+
+            Контрольные суммы — в SHA256SUMS.txt.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

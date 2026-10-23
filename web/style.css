@@ -76,6 +76,7 @@ body.transparent { background-color: transparent; }
 #settings-panel.hidden {
     opacity: 0;
     pointer-events: none;
+    visibility: hidden;
     transform: translateY(-12px);
 }
 #settings-panel::-webkit-scrollbar { width: 6px; }
@@ -354,6 +355,7 @@ select option { background: #22222c; }
 .btn.primary:hover { filter: brightness(1.08); }
 
 .btn-row { display: flex; gap: 8px; margin-top: 14px; }
+.btn-row .btn { flex: 1 1 0; }
 .footer {
     margin-top: 14px;
     padding-top: 12px;
