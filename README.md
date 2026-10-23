@@ -92,7 +92,7 @@ playwright install chromium
 python tests/memory_probe.py --mode all --cycles 200 --json memory.json
 ```
 
-Скрипт проверяет Python-core (картинки, настройки, сцены) и Chromium-фронтенд (JS heap после принудительного GC, DOM, RSS). Для Windows/Linux/macOS есть workflow `.github/workflows/memory.yml` — он запускается вручную или при изменении тестов и складывает JSON-отчёты в артефакты.
+Скрипт проверяет Python-core (картинки, настройки, сцены) и Chromium-фронтенд (JS heap после принудительного GC, DOM, RSS). Для Windows/Linux/macOS есть workflow `.github/workflows/memory.yml` — он запускается вручную или при изменении тестов и складывает JSON-отчёты в артефакты. Результаты последнего прогона: [MEMORY.md](MEMORY.md).
 
 Обычные тесты:
 

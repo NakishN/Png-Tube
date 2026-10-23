@@ -37,10 +37,14 @@ CHROMIUM_FLAGS = (
     '--disable-renderer-backgrounding '
     '--disable-backgrounding-occluded-windows '
     '--disable-features=CalculateNativeWinOcclusion,Translate,OptimizationHints,MediaRouter '
-    '--renderer-process-limit=1'
+    '--renderer-process-limit=1 '
+    '--js-flags=--max-old-space-size=128'
 )
-os.environ.setdefault('QTWEBENGINE_CHROMIUM_FLAGS',
-                      CHROMIUM_FLAGS + ' --js-flags=--max-old-space-size=512')
+# На Linux QtWebEngine тянет GPU-процесс и видеопамять, хотя аватару нужны
+# только CSS/PNG. Software-рендеринг стабильнее в VM/VMware/старых драйверах
+# и экономит ~40 МБ PSS. При желании можно переопределить env-переменной.
+QT_FLAGS = CHROMIUM_FLAGS + ' --disable-gpu --disable-gpu-compositing'
+os.environ.setdefault('QTWEBENGINE_CHROMIUM_FLAGS', QT_FLAGS)
 if sys.platform == 'win32':
     os.environ.setdefault('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', CHROMIUM_FLAGS)
 

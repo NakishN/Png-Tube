@@ -3,6 +3,7 @@ import io
 import json
 import sys
 import threading
+from array import array
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,18 @@ def test_normalize_png_uses_pillow():
     result = Image.open(io.BytesIO(normalized))
     assert result.format == 'PNG'
     assert max(result.size) <= main.MAX_IMAGE_SIDE
+
+
+def test_microphone_raw_callback_without_numpy():
+    mic = main.Microphone(lambda: None)
+    try:
+        samples = array('f', [0.2, -0.2] * 128)
+        mic._callback(samples.tobytes(), 256, None, None, channels=1)
+        assert mic.raw > 0
+        mic._callback(b'\x00' * (256 * 4), 256, None, None, channels=1)
+        assert mic.raw == 0
+    finally:
+        mic.stop()
 
 
 def test_scene_roundtrip(tmp_path):
