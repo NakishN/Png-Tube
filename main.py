@@ -48,7 +48,10 @@ import webview  # noqa: E402
 
 try:
     import sounddevice as sd
-except (ImportError, OSError):   # OSError: в системе нет PortAudio
+except Exception:
+    # ImportError — нет sounddevice; OSError — нет PortAudio; PortAudioError —
+    # на Linux нет доступного PulseAudio/ALSA-сервера (часто в CI/контейнере).
+    # Приложение должно запускаться и без микрофона.
     sd = None
 
 # Pillow используется как основной обработчик картинок. Это позволяет не
@@ -190,6 +193,17 @@ def first_path(result):
     return result if isinstance(result, str) else result[0]
 
 
+_write_locks = {}
+_write_locks_guard = threading.Lock()
+
+
+def _atomic_path_lock(path):
+    """Один лок на путь: на Windows два os.replace одного файла дают WinError 5."""
+    key = str(path.absolute())
+    with _write_locks_guard:
+        return _write_locks.setdefault(key, threading.Lock())
+
+
 def atomic_write_bytes(path, data):
     """Пишем через уникальный временный файл.
 
@@ -198,22 +212,40 @@ def atomic_write_bytes(path, data):
     сделать os.replace, второй получал ENOENT, а итоговая картинка могла
     оказаться не той, которую выбрал пользователь. Уникальный tmp + лок
     на слот (см. Api._store_image) решают и порядок, и целостность.
+
+    На Windows os.replace иногда получает PermissionError от antivirus/
+    индексатора, который ещё держит файл. Делаем несколько коротких попыток
+    и сериализуем замены одного и того же пути.
     """
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f'.{path.name}.', suffix='.tmp', dir=str(path.parent))
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, 'wb') as fh:
-            fh.write(data)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
-    except BaseException:
+    with _atomic_path_lock(path):
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f'.{path.name}.', suffix='.tmp', dir=str(path.parent))
+        tmp = Path(tmp_name)
         try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, 'wb') as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+
+            last_error = None
+            for attempt in range(6):
+                try:
+                    os.replace(tmp, path)
+                    return
+                except PermissionError as e:
+                    # Windows + антивирус/индексатор: подождать и повторить.
+                    last_error = e
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
+            if last_error is not None:
+                raise last_error
+        except BaseException:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
 
 def atomic_write_text(path, text):

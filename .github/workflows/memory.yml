@@ -2,6 +2,11 @@ name: Memory leak probes
 
 on:
   workflow_dispatch:
+    inputs:
+      cycles:
+        description: 'Сколько циклов на каждый профиль'
+        required: false
+        default: '200'
   push:
     paths:
       - 'tests/memory_probe.py'
@@ -43,7 +48,7 @@ jobs:
 
       - name: Run core + web probes
         run: |
-          python tests/memory_probe.py --mode all --cycles 200 --json memory-${{ matrix.os }}.json
+          python tests/memory_probe.py --mode all --cycles ${{ github.event.inputs.cycles || '200' }} --json memory-${{ matrix.os }}.json
 
       - name: Upload memory report
         if: always()
