@@ -82,7 +82,7 @@ python main.py
 - картинки 1000 px + отдельные превью 160 px;
 - на Windows/macOS не устанавливаются PyQt6/QtWebEngine — используется родной webview;
 - NumPy не нужен: аудио считается через `array`/`math`;
-- на Linux остаётся Qt WebEngine, это самая тяжёлая часть (~100–150 МБ PSS).
+- на Linux остаётся Qt WebEngine: полное приложение с окном занимает ~280 МБ PSS (из них ~170 МБ — Python/QtWebEngine browser, остальное — renderer/zygote). На Windows/macOS используется родной webview, там GUI-процесс легче.
 
 Замер утечек:
 
