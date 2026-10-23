@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install PortAudio (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libportaudio2
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint Python
+        run: ruff check main.py tests
+
+      - name: Check JS syntax
+        run: node --check web/app.js
+
+      - name: Compile Python
+        run: python -m py_compile main.py tests/memory_probe.py
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Validate PyInstaller spec syntax
+        run: python -c "compile(open('PNGTuber.spec', encoding='utf-8').read(), 'PNGTuber.spec', 'exec')"

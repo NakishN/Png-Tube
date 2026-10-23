@@ -1,5 +1,12 @@
-pywebview[qt]
-sounddevice
-numpy
-PyQt6
-PyQt6-WebEngine
+# Runtime-зависимости PNGTuber.
+#
+# Windows/macOS используют родной webview (WebView2/WKWebView), поэтому
+# PyQt6/QtWebEngine туда больше не ставится. Qt нужен только Linux-сборке.
+# Картинки везде обрабатывает Pillow.
+pywebview==6.2.1; sys_platform != "linux"
+pywebview[qt]==6.2.1; sys_platform == "linux"
+PyQt6==6.11.0; sys_platform == "linux"
+PyQt6-WebEngine==6.11.0; sys_platform == "linux"
+
+Pillow==12.3.0
+sounddevice==0.5.6

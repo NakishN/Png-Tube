@@ -32,7 +32,7 @@
         </div>
     </div>
 
-    <aside id="settings-panel">
+    <aside id="settings-panel" aria-hidden="false">
         <div class="panel-head">
             <h1>PNGTuber</h1>
             <div class="status" id="status"><i></i><span id="status-text">микрофон выкл.</span></div>
@@ -46,10 +46,10 @@
 
         <section id="tab-images" class="tab-content active">
             <div class="slots">
-                <div class="slot" role="button" tabindex="0" data-slot="idle"><img hidden alt=""><span>Молчит</span><button class="clear" title="Сбросить">×</button></div>
-                <div class="slot" role="button" tabindex="0" data-slot="speaking"><img hidden alt=""><span>Говорит</span><button class="clear" title="Сбросить">×</button></div>
-                <div class="slot" role="button" tabindex="0" data-slot="idle_blink"><img hidden alt=""><span>Моргает <span class="opt">(молчит)</span></span><button class="clear" title="Сбросить">×</button></div>
-                <div class="slot" role="button" tabindex="0" data-slot="speaking_blink"><img hidden alt=""><span>Моргает <span class="opt">(говорит)</span></span><button class="clear" title="Сбросить">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="idle" aria-label="Слот «Молчит». Нажмите, чтобы выбрать картинку"><img hidden alt=""><span>Молчит</span><button class="clear" title="Сбросить" aria-label="Сбросить слот «Молчит»">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="speaking" aria-label="Слот «Говорит». Нажмите, чтобы выбрать картинку"><img hidden alt=""><span>Говорит</span><button class="clear" title="Сбросить" aria-label="Сбросить слот «Говорит»">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="idle_blink" aria-label="Слот «Моргает молча». Нажмите, чтобы выбрать картинку"><img hidden alt=""><span>Моргает <span class="opt">(молчит)</span></span><button class="clear" title="Сбросить" aria-label="Сбросить слот «Моргает молча»">×</button></div>
+                <div class="slot" role="button" tabindex="0" data-slot="speaking_blink" aria-label="Слот «Моргает говорит». Нажмите, чтобы выбрать картинку"><img hidden alt=""><span>Моргает <span class="opt">(говорит)</span></span><button class="clear" title="Сбросить" aria-label="Сбросить слот «Моргает говорит»">×</button></div>
             </div>
             <p class="footer" style="border:0;padding-top:10px;margin-top:6px;display:block;line-height:1.5">
                 Нажмите на слот или перетащите PNG прямо на него. Моргание необязательно.
@@ -58,7 +58,10 @@
 
         <section id="tab-audio" class="tab-content">
             <div class="row">
-                <label for="device-select">Микрофон</label>
+                <div class="row-label">
+                    <label for="device-select">Микрофон</label>
+                    <button type="button" class="link" id="refresh-devices">Обновить</button>
+                </div>
                 <select id="device-select"><option value="">По умолчанию</option></select>
             </div>
 
@@ -89,7 +92,7 @@
                 <div class="advanced-content">
                     <div class="row">
                         <div class="row-label">Усиление звука <b id="gain-value">100%</b></div>
-                        <input type="range" id="gain-slider" min="100" max="500" step="10" value="100">
+                        <input type="range" id="gain-slider" min="10" max="500" step="10" value="100">
                     </div>
                     <div class="row">
                         <div class="row-label">Порог закрытия рта вручную <b id="threshold-close-value">10</b></div>
@@ -102,7 +105,10 @@
                 </div>
             </details>
 
-            <button id="start-btn" class="btn primary" style="margin-top:12px">Включить микрофон</button>
+            <div class="btn-row" style="margin-top:12px">
+                <button id="start-btn" class="btn primary">Включить микрофон</button>
+                <button id="stop-btn" class="btn secondary" hidden>Выключить</button>
+            </div>
         </section>
 
         <section id="tab-display" class="tab-content">
@@ -111,11 +117,11 @@
                 <div class="color-row">
                     <input type="color" id="bg-color-picker" value="#00ff00">
                     <div class="color-presets">
-                        <button type="button" class="preset-dot" style="background:#00ff00" data-color="#00ff00" title="Зеленый"></button>
-                        <button type="button" class="preset-dot" style="background:#0000ff" data-color="#0000ff" title="Синий"></button>
-                        <button type="button" class="preset-dot" style="background:#ff00ff" data-color="#ff00ff" title="Маджента"></button>
-                        <button type="button" class="preset-dot" style="background:#000000" data-color="#000000" title="Черный"></button>
-                        <button type="button" class="preset-dot" style="background:#ffffff" data-color="#ffffff" title="Белый"></button>
+                        <button type="button" class="preset-dot" style="background:#00ff00" data-color="#00ff00" title="Зеленый" aria-label="Зелёный фон"></button>
+                        <button type="button" class="preset-dot" style="background:#0000ff" data-color="#0000ff" title="Синий" aria-label="Синий фон"></button>
+                        <button type="button" class="preset-dot" style="background:#ff00ff" data-color="#ff00ff" title="Маджента" aria-label="Маджента фон"></button>
+                        <button type="button" class="preset-dot" style="background:#000000" data-color="#000000" title="Черный" aria-label="Чёрный фон"></button>
+                        <button type="button" class="preset-dot" style="background:#ffffff" data-color="#ffffff" title="Белый" aria-label="Белый фон"></button>
                     </div>
                 </div>
             </div>
@@ -146,7 +152,7 @@
         </div>
     </aside>
 
-    <div id="toast"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
 
     <script src="app.js"></script>
 </body>

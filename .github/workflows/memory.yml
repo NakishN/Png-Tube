@@ -1,0 +1,54 @@
+name: Memory leak probes
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tests/memory_probe.py'
+      - 'requirements-memory.txt'
+      - '.github/workflows/memory.yml'
+
+jobs:
+  probe:
+    name: Memory on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements-memory.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-memory.txt
+
+      - name: Install Chromium (Linux)
+        if: runner.os == 'Linux'
+        run: playwright install --with-deps chromium
+
+      - name: Install Chromium (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: playwright install chromium
+
+      - name: Run core + web probes
+        run: |
+          python tests/memory_probe.py --mode all --cycles 200 --json memory-${{ matrix.os }}.json
+
+      - name: Upload memory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-${{ matrix.os }}
+          path: memory-${{ matrix.os }}.json
+          if-no-files-found: warn
